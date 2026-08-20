@@ -56,7 +56,7 @@ export function createBlock(type: BlockType, grid?: GridArea): Block {
     text: { variant: "body", text: "Новый текстовый блок" },
     metric: { value: "+0.7%", label: "GMV", comparison: "vs control +0.2%", detail: "Рост после запуска нового ранжирования" },
     image: { src: "", fit: "cover", align: "center", alt: "Изображение" },
-    mockup: { preset: "Browser", src: "", fit: "contain", background: "#EEF0F3", padding: 16, scale: 90, annotations: [] },
+    mockup: { preset: "Browser", src: "", fit: "contain", background: "#EEF0F3", padding: 16, scale: 90 },
     table: { rows: [["Сегмент", "Значение"], ["Control", "12.4"], ["Test", "13.1"]] },
     chart: { chartType: "Bar", points: [{ label: "A", value: 10 }, { label: "B", value: 14 }, { label: "C", value: 11 }] },
     divider: { variant: "label", label: "Результаты эксперимента" },

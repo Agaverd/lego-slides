@@ -65,6 +65,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .edge-resize-bottom { bottom: calc(var(--edge-zone-y) / -2); }
 .edge-resize-left { left: calc(var(--edge-zone-x) / -2); }
 .edge-resize-right { right: calc(var(--edge-zone-x) / -2); }
+.slide-block .edge-resize,
+.slide-block .edge-resize:hover:not(:disabled),
+.slide-block .edge-resize:active:not(:disabled) { appearance: none; border: 0; background: transparent; box-shadow: none; transform: none; }
 .edge-resize span { position: absolute; display: block; border: 2px solid #fff; border-radius: 999px; background: var(--ds-accent); box-shadow: 0 1px 4px #0b4ca94a; opacity: 0; transition: opacity 120ms ease, transform 120ms ease; }
 .edge-resize-top span, .edge-resize-bottom span { left: 50%; width: 40px; height: 6px; transform: translate(-50%, -50%) scale(.82); }
 .edge-resize-top span { top: 50%; }
@@ -117,10 +120,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .comparison > div { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto 1fr; gap: 4px; }
 .comparison > div > span { font-size: clamp(6px, .8vw, 11px); font-weight: 800; letter-spacing: .1em; color: var(--ds-muted); }
 .comparison .mockup-screen { border: 1px solid var(--ds-border); border-radius: 5px; }
-.annotation { position: absolute; z-index: 3; color: #ef493f; font-weight: 800; }
-.annotation-arrow { right: 18%; top: 25%; font-size: clamp(14px, 2vw, 30px); }
-.annotation-highlight { left: 38%; top: 32%; width: 24%; height: 22%; border: 2px solid #ef493f; border-radius: 4px; }
-.annotation-label { right: 10%; top: 12%; padding: 3px 6px; background: #ef493f; color: #fff; border-radius: 3px; font-size: clamp(6px, .7vw, 10px); }
 .table-wrap { width: 100%; height: 100%; overflow: auto; padding: clamp(6px, 1.2vw, 18px); background: #fff; }
 table { width: 100%; border-collapse: collapse; font-size: clamp(6px, .85vw, 12px); }
 td { padding: clamp(3px, .6vw, 9px); border-bottom: 1px solid var(--ds-border); outline: none; }
@@ -135,9 +134,9 @@ tr:first-child td { color: var(--ds-muted); background: var(--ds-subtle); font-s
 .presets strong { display: block; padding: 7px 8px; color: var(--ds-muted); font-size: 11px; }
 .presets button { width: 100%; display: flex; align-items: center; gap: 9px; border: 0; padding: 8px; text-align: left; }
 .preset-icon { width: 24px; height: 14px; border: 1px solid var(--ds-border-strong); background: linear-gradient(90deg, #eff2f5 45%, transparent 45%); }
-.blocks { left: 50%; bottom: 45px; width: 210px; transform: translateX(-50%); display: grid; grid-template-columns: 1fr 1fr; }
+.blocks { left: 50%; bottom: 45px; width: max-content; min-width: 340px; max-width: calc(100vw - 40px); transform: translateX(-50%); display: grid; grid-template-columns: repeat(2, max-content); justify-content: stretch; }
 .blocks .menu-label { grid-column: 1 / -1; padding: 7px 8px; color: var(--ds-muted); font-size: 11px; }
-.blocks button { display: flex; align-items: center; gap: 8px; border: 0; padding: 9px 8px; text-align: left; }
+.blocks button { min-width: 160px; display: flex; align-items: center; gap: 8px; border: 0; padding: 9px 12px; text-align: left; white-space: nowrap; }
 .blocks button span { width: 20px; color: var(--ds-accent); font-weight: 750; text-align: center; }
 .inspector-body { padding: 14px; }
 .inspector-tabs { position: sticky; top: 0; z-index: 3; padding: 8px 10px 0; background: var(--ds-surface); border-bottom: 1px solid var(--ds-border); }
@@ -163,8 +162,6 @@ tr:first-child td { color: var(--ds-muted); background: var(--ds-subtle); font-s
 .tip p, .helper { color: var(--ds-muted); line-height: 1.45; }
 .upload-button { width: 100%; display: block; border: 1px dashed var(--ds-border-strong); border-radius: var(--ds-radius-sm); padding: 9px; text-align: center; color: var(--ds-accent); cursor: pointer; }
 .upload-button input { display: none; }
-.annotation-actions { display: grid !important; grid-template-columns: 1fr 1fr; width: 100%; }
-.annotation-actions button { padding: 6px; font-size: 10px; }
 .stepper { width: 100%; display: grid !important; grid-template-columns: 34px 1fr 34px; align-items: center; text-align: center; }
 .stepper button { padding: 6px; }
 .inspector-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--ds-border); }
