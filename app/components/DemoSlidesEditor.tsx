@@ -93,7 +93,7 @@ export function DemoSlidesEditor() {
   const [past, setPast] = useState<Project[]>([]); const [future, setFuture] = useState<Project[]>([]); const [dragSlideId, setDragSlideId] = useState<string | null>(null);
 
   useEffect(() => { repo.getProject("current").then((saved) => { const p = saved ?? createDemoProject(); setProject(p); setCurrentId(p.slides[0]?.id ?? ""); setReady(true); }); }, []);
-  useEffect(() => { if (!ready) return; const timer = setTimeout(() => repo.saveProject({ ...project, updatedAt: new Date().toISOString() }).then(() => setNotice("Сохранено")), 350); return () => clearTimeout(timer); }, [project, ready]);
+  useEffect(() => { if (!ready) return; const timer = setTimeout(() => repo.saveProject({ ...project, updatedAt: new Date().toISOString() }).then(() => setNotice("Сохранено")).catch(() => setNotice("Не удалось сохранить: хранилище браузера заполнено")), 350); return () => clearTimeout(timer); }, [project, ready]);
   useEffect(() => { if (notice) { const t = setTimeout(() => setNotice(""), 1400); return () => clearTimeout(t); } }, [notice]);
 
   const current = project.slides.find((s) => s.id === currentId) ?? project.slides[0];

@@ -12,7 +12,6 @@ export class LocalProjectRepository implements ProjectRepository {
   }
   async saveProject(project: Project) {
     const raw = JSON.stringify(project);
-    localStorage.setItem(`demo-slides:${project.id}`, raw);
     localStorage.setItem("demo-slides:current", raw);
   }
 }
