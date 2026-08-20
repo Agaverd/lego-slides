@@ -1,18 +1,21 @@
 "use client";
 
-import { ChangeEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Block, BlockType, GridArea, Project, Slide, createBlock, createDemoProject, normalizeProject, presets } from "../domain";
+import { ChangeEvent, CSSProperties, PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from "react";
+import { Button, Icon, NumberInput, Slider, Tab, TabList, TabPanel, TabProvider, TextInput, ThemeProvider, configure } from "@gravity-ui/uikit";
+import { ArrowRotateLeft, ArrowRotateRight, Copy, Eye, FileArrowDown, Gear, LayoutCells, Plus, TrashBin } from "@gravity-ui/icons";
+import { Block, BlockType, GridArea, PresentationSettings, Project, Slide, createBlock, createDemoProject, defaultPresentationSettings, normalizeProject, presets } from "../domain";
 import { LocalProjectRepository } from "../repository";
 
 const repo = new LocalProjectRepository();
+configure({ lang: "ru" });
 const clone = <T,>(value: T): T => structuredClone(value);
 const overlaps = (a: GridArea, b: GridArea) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-const canPlace = (area: GridArea, blocks: Block[], ignoreId?: string) => area.x >= 0 && area.y >= 0 && area.x + area.w <= 12 && area.y + area.h <= 8 && !blocks.some((b) => b.id !== ignoreId && overlaps(area, b.grid));
+const canPlace = (area: GridArea, blocks: Block[], columns: number, rows: number, ignoreId?: string) => area.x >= 0 && area.y >= 0 && area.x + area.w <= columns && area.y + area.h <= rows && !blocks.some((b) => b.id !== ignoreId && overlaps(area, b.grid));
 
-function findSpace(blocks: Block[], width: number, height: number) {
-  for (let y = 0; y <= 8 - height; y++) for (let x = 0; x <= 12 - width; x++) {
+function findSpace(blocks: Block[], width: number, height: number, columns: number, rows: number) {
+  for (let y = 0; y <= rows - height; y++) for (let x = 0; x <= columns - width; x++) {
     const area = { x, y, w: width, h: height };
-    if (canPlace(area, blocks)) return area;
+    if (canPlace(area, blocks, columns, rows)) return area;
   }
   return null;
 }
@@ -56,43 +59,68 @@ function Mockup({ block }: { block: Block }) {
   </div>;
 }
 
-function SlideCanvas({ slide, selectedId, editingId, preview, onSelect, onEdit, onMoveResize, onContent }: {
-  slide: Slide; selectedId: string | null; editingId: string | null; preview: boolean;
+type ResizeEdge = "left" | "right" | "top" | "bottom";
+
+function getBlockStyle(area: GridArea, settings: PresentationSettings) {
+  const { columns, rows, gap } = settings.grid;
+  const padX = { left: settings.padding.left / 12, right: settings.padding.right / 12 };
+  const padY = { top: settings.padding.top / 6.75, bottom: settings.padding.bottom / 6.75 };
+  const gapX = gap / 12; const gapY = gap / 6.75;
+  const cellW = (100 - padX.left - padX.right - gapX * (columns - 1)) / columns;
+  const cellH = (100 - padY.top - padY.bottom - gapY * (rows - 1)) / rows;
+  return {
+    left: `${padX.left + area.x * (cellW + gapX)}%`, top: `${padY.top + area.y * (cellH + gapY)}%`,
+    width: `${area.w * cellW + (area.w - 1) * gapX}%`, height: `${area.h * cellH + (area.h - 1) * gapY}%`,
+    "--block-radius": `${settings.blockRadius}px`, "--edge-zone-x": `${100 / Math.max(area.w, 1)}%`, "--edge-zone-y": `${100 / Math.max(area.h, 1)}%`,
+  } as CSSProperties;
+}
+
+/* eslint-disable react-hooks/refs -- canvasRef is read only after a pointer event starts, never during render */
+function SlideCanvas({ slide, settings, selectedId, editingId, preview, onSelect, onEdit, onMoveResize, onContent }: {
+  slide: Slide; settings: PresentationSettings; selectedId: string | null; editingId: string | null; preview: boolean;
   onSelect: (id: string | null) => void; onEdit: (id: string | null) => void; onMoveResize: (id: string, area: GridArea) => void; onContent: (id: string, content: Record<string, unknown>) => void;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const startPointer = (e: ReactPointerEvent, block: Block, mode: "move" | "resize") => {
+  const startPointer = (e: ReactPointerEvent, block: Block, mode: "move" | ResizeEdge) => {
     if (preview || editingId === block.id) return;
     e.stopPropagation(); e.preventDefault(); onSelect(block.id);
     const canvas = canvasRef.current; if (!canvas) return;
     const start = { x: e.clientX, y: e.clientY, grid: block.grid };
     const rect = canvas.getBoundingClientRect();
     const move = (event: PointerEvent) => {
-      const dx = Math.round((event.clientX - start.x) / (rect.width / 12));
-      const dy = Math.round((event.clientY - start.y) / (rect.height / 8));
-      const next = mode === "move" ? { ...start.grid, x: start.grid.x + dx, y: start.grid.y + dy } : { ...start.grid, w: Math.max(1, start.grid.w + dx), h: Math.max(1, start.grid.h + dy) };
-      if (canPlace(next, slide.blocks, block.id)) onMoveResize(block.id, next);
+      const dx = Math.round((event.clientX - start.x) / (rect.width / settings.grid.columns));
+      const dy = Math.round((event.clientY - start.y) / (rect.height / settings.grid.rows));
+      let next = { ...start.grid };
+      if (mode === "move") next = { ...next, x: start.grid.x + dx, y: start.grid.y + dy };
+      if (mode === "right") next.w = start.grid.w + dx;
+      if (mode === "bottom") next.h = start.grid.h + dy;
+      if (mode === "left") next = { ...next, x: start.grid.x + dx, w: start.grid.w - dx };
+      if (mode === "top") next = { ...next, y: start.grid.y + dy, h: start.grid.h - dy };
+      if (next.w >= 1 && next.h >= 1 && canPlace(next, slide.blocks, settings.grid.columns, settings.grid.rows, block.id)) onMoveResize(block.id, next);
     };
     const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
-  return <div ref={canvasRef} className={`slide-canvas ${preview ? "is-preview" : ""}`} style={{ background: slide.background }} onPointerDown={() => onSelect(null)} role="presentation">
-    {!preview && <div className="grid-lines" />}
+  const canvasStyle = { background: settings.slideColor, "--grid-columns": settings.grid.columns, "--grid-rows": settings.grid.rows, "--grid-gap": `${settings.grid.gap}px` } as CSSProperties;
+  return <div ref={canvasRef} className={`slide-canvas ${preview ? "is-preview" : ""}`} style={canvasStyle} onPointerDown={() => onSelect(null)} role="presentation">
+    {!preview && <div className="grid-lines" style={{ inset: `${settings.padding.top / 6.75}% ${settings.padding.right / 12}% ${settings.padding.bottom / 6.75}% ${settings.padding.left / 12}%` }} />}
     {slide.blocks.length === 0 && <div className="empty-slide"><strong>Пустой слайд</strong><span>Добавьте первый блок</span></div>}
-    {slide.blocks.map((block) => <div key={block.id} className={`slide-block block-${block.type} ${selectedId === block.id ? "is-selected" : ""}`} style={{ left: `${block.grid.x / 12 * 100}%`, top: `${block.grid.y / 8 * 100}%`, width: `${block.grid.w / 12 * 100}%`, height: `${block.grid.h / 8 * 100}%` }} onPointerDown={(e) => startPointer(e, block, "move")} onDoubleClick={(e) => { e.stopPropagation(); onSelect(block.id); onEdit(block.id); }}>
+    {slide.blocks.map((block) => <div key={block.id} className={`slide-block block-${block.type} ${selectedId === block.id ? "is-selected" : ""}`} style={getBlockStyle(block.grid, settings)} onPointerDown={(e) => startPointer(e, block, "move")} onDoubleClick={(e) => { e.stopPropagation(); onSelect(block.id); onEdit(block.id); }}>
       <div className="block-inner"><BlockContent block={block} editing={editingId === block.id} onContent={(content) => onContent(block.id, content)} /></div>
-      {!preview && selectedId === block.id && <button className="resize-handle" aria-label="Изменить размер блока" onPointerDown={(e) => startPointer(e, block, "resize")} />}
+      {!preview && (["top", "right", "bottom", "left"] as ResizeEdge[]).map((edge) => <button key={edge} className={`edge-resize edge-resize-${edge}`} aria-label={`Изменить размер: ${edge}`} onPointerDown={(e) => startPointer(e, block, edge)}><span /></button>)}
     </div>)}
   </div>;
 }
+/* eslint-enable react-hooks/refs */
 
 export function DemoSlidesEditor() {
   const [project, setProject] = useState<Project>(() => createDemoProject());
   const [currentId, setCurrentId] = useState(""); const [selectedId, setSelectedId] = useState<string | null>(null); const [editingId, setEditingId] = useState<string | null>(null);
   const [preview, setPreview] = useState(false); const [addBlockOpen, setAddBlockOpen] = useState(false); const [presetOpen, setPresetOpen] = useState(false); const [notice, setNotice] = useState(""); const [ready, setReady] = useState(false);
   const [past, setPast] = useState<Project[]>([]); const [future, setFuture] = useState<Project[]>([]); const [dragSlideId, setDragSlideId] = useState<string | null>(null);
+  const [inspectorTab, setInspectorTab] = useState("context");
 
-  useEffect(() => { repo.getProject("current").then((saved) => { const p = saved ?? createDemoProject(); setProject(p); setCurrentId(p.slides[0]?.id ?? ""); setReady(true); }); }, []);
+  useEffect(() => { repo.getProject("current").then((saved) => { const fallback = createDemoProject(); const p = saved ? { ...saved, presentationSettings: { ...defaultPresentationSettings, ...saved.presentationSettings, padding: { ...defaultPresentationSettings.padding, ...saved.presentationSettings?.padding }, grid: { ...defaultPresentationSettings.grid, ...saved.presentationSettings?.grid } } } : fallback; setProject(p); setCurrentId(p.slides[0]?.id ?? ""); setReady(true); }); }, []);
   useEffect(() => { if (!ready) return; const timer = setTimeout(() => repo.saveProject({ ...project, updatedAt: new Date().toISOString() }).then(() => setNotice("Сохранено")).catch(() => setNotice("Не удалось сохранить: хранилище браузера заполнено")), 350); return () => clearTimeout(timer); }, [project, ready]);
   useEffect(() => { if (notice) { const t = setTimeout(() => setNotice(""), 1400); return () => clearTimeout(t); } }, [notice]);
 
@@ -104,7 +132,7 @@ export function DemoSlidesEditor() {
   const redo = useCallback(() => { setFuture((f) => { const next = f[0]; if (!next) return f; setPast((h) => [...h, clone(project)]); setProject(next); return f.slice(1); }); }, [project]);
 
   const removeSelected = useCallback(() => { if (!selectedId) return; updateCurrent((s) => ({ ...s, blocks: s.blocks.filter((b) => b.id !== selectedId) })); setSelectedId(null); }, [selectedId, updateCurrent]);
-  const duplicateBlock = useCallback(() => { if (!selected || !current) return; const area = findSpace(current.blocks, selected.grid.w, selected.grid.h); if (!area) { setNotice("Нет свободного места для копии"); return; } const copy = { ...clone(selected), id: crypto.randomUUID(), grid: area }; updateCurrent((s) => ({ ...s, blocks: [...s.blocks, copy] })); setSelectedId(copy.id); }, [selected, current, updateCurrent]);
+  const duplicateBlock = useCallback(() => { if (!selected || !current) return; const { columns, rows } = project.presentationSettings.grid; const area = findSpace(current.blocks, selected.grid.w, selected.grid.h, columns, rows); if (!area) { setNotice("Нет свободного места для копии"); return; } const copy = { ...clone(selected), id: crypto.randomUUID(), grid: area }; updateCurrent((s) => ({ ...s, blocks: [...s.blocks, copy] })); setSelectedId(copy.id); }, [selected, current, project.presentationSettings.grid, updateCurrent]);
   const patchSelectedContent = useCallback((patch: Record<string, unknown>) => { if (!selected) return; updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === selected.id ? { ...b, content: { ...b.content, ...patch } } : b) })); }, [selected, updateCurrent]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -121,27 +149,46 @@ export function DemoSlidesEditor() {
     const paste = (e: ClipboardEvent) => { const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/")); if (!file || !selected || !["image", "mockup"].includes(selected.type)) return; const reader = new FileReader(); reader.onload = () => patchSelectedContent({ src: String(reader.result) }); reader.readAsDataURL(file); };
     window.addEventListener("paste", paste); return () => window.removeEventListener("paste", paste);
   }, [selected, patchSelectedContent]);
-  const addBlock = (type: BlockType) => { if (!current) return; const block = createBlock(type); const area = findSpace(current.blocks, block.grid.w, block.grid.h) ?? findSpace(current.blocks, Math.min(3, block.grid.w), Math.min(2, block.grid.h)); if (!area) { setNotice("На слайде нет свободного места"); return; } block.grid = area; updateCurrent((s) => ({ ...s, blocks: [...s.blocks, block] })); setSelectedId(block.id); setAddBlockOpen(false); };
+  const addBlock = (type: BlockType) => { if (!current) return; const block = createBlock(type); const { columns, rows } = project.presentationSettings.grid; const width = Math.min(block.grid.w, columns); const height = Math.min(block.grid.h, rows); const area = findSpace(current.blocks, width, height, columns, rows) ?? findSpace(current.blocks, Math.min(3, width), Math.min(2, height), columns, rows); if (!area) { setNotice("На слайде нет свободного места"); return; } block.grid = area; updateCurrent((s) => ({ ...s, blocks: [...s.blocks, block] })); setSelectedId(block.id); setInspectorTab("context"); setAddBlockOpen(false); };
   const addSlide = (name: keyof typeof presets) => { const id = crypto.randomUUID(); const blocks = clone(presets[name]).map((b) => ({ ...createBlock((b.type ?? "text") as BlockType), ...b, id: crypto.randomUUID() })) as Block[]; const next = { id, order: project.slides.length, title: String(name), background: "#FFFFFF", blocks }; commit((p) => ({ ...p, slides: [...p.slides, next] })); setCurrentId(id); setSelectedId(null); setPresetOpen(false); };
   const duplicateSlide = (id: string) => { const source = project.slides.find((s) => s.id === id); if (!source) return; const copy = { ...clone(source), id: crypto.randomUUID(), title: `${source.title} — копия`, blocks: source.blocks.map((b) => ({ ...b, id: crypto.randomUUID() })) }; commit((p) => ({ ...p, slides: [...p.slides, copy].map((s, i) => ({ ...s, order: i })) })); setCurrentId(copy.id); };
   const deleteSlide = (id: string) => { if (project.slides.length === 1) { setNotice("В презентации должен остаться один слайд"); return; } const left = project.slides.filter((s) => s.id !== id); commit({ ...project, slides: left.map((s, i) => ({ ...s, order: i })) }); if (currentId === id) setCurrentId(left[0].id); };
   const reorder = (targetId: string) => { if (!dragSlideId || dragSlideId === targetId) return; const list = [...project.slides]; const from = list.findIndex((s) => s.id === dragSlideId); const to = list.findIndex((s) => s.id === targetId); const [moved] = list.splice(from, 1); list.splice(to, 0, moved); commit({ ...project, slides: list.map((s, i) => ({ ...s, order: i })) }); setDragSlideId(null); };
   const upload = (e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => patchSelectedContent({ src: String(reader.result) }); reader.readAsDataURL(file); };
   const exportPresentation = () => { downloadJson(normalizeProject(project), `${project.title.toLowerCase().replaceAll(" ", "-")}.presentation.json`); setNotice("Структура презентации экспортирована"); };
+  const updatePresentationSettings = (settings: PresentationSettings) => commit((p) => ({ ...p, presentationSettings: settings }));
 
   if (!ready || !current) return <div className="app-loading"><span />Загружаем презентацию…</div>;
-  return <main className="editor-shell">
-    <header className="topbar"><div className="brand"><span className="brand-mark">D</span><input aria-label="Название проекта" value={project.title} onChange={(e) => commit({ ...project, title: e.target.value })} /></div><div className="save-state">{notice || "Автосохранение включено"}</div><div className="top-actions"><button className="icon-button" onClick={undo} disabled={!past.length} aria-label="Отменить">↶</button><button className="icon-button" onClick={redo} disabled={!future.length} aria-label="Повторить">↷</button><div className="segmented"><button className={!preview ? "active" : ""} onClick={() => setPreview(false)}>Редактор</button><button className={preview ? "active" : ""} onClick={() => { setPreview(true); setSelectedId(null); }}>Превью</button></div><button className="primary" onClick={exportPresentation}>Экспорт <span>↓</span></button></div></header>
+  return <ThemeProvider theme="light"><main className="editor-shell">
+    <header className="topbar"><div className="brand"><span className="brand-mark">D</span><TextInput aria-label="Название проекта" value={project.title} onUpdate={(title) => commit({ ...project, title })} size="m" /></div><div className="save-state">{notice || "Автосохранение включено"}</div><div className="top-actions"><Button view="flat" onClick={undo} disabled={!past.length} aria-label="Отменить"><Icon data={ArrowRotateLeft} size={16} /></Button><Button view="flat" onClick={redo} disabled={!future.length} aria-label="Повторить"><Icon data={ArrowRotateRight} size={16} /></Button><div className="segmented"><Button view={!preview ? "normal" : "flat"} onClick={() => setPreview(false)}>Редактор</Button><Button view={preview ? "normal" : "flat"} onClick={() => { setPreview(true); setSelectedId(null); }}><Icon data={Eye} size={16} />Превью</Button></div><Button view="action" onClick={exportPresentation}><Icon data={FileArrowDown} size={16} />Экспорт</Button></div></header>
     <div className="workspace">
-      <aside className="slides-panel"><div className="panel-title"><span>Слайды</span><small>{project.slides.length}</small></div><div className="slide-list">{project.slides.map((s, i) => <div key={s.id} className={`thumbnail-row ${s.id === current.id ? "active" : ""}`} draggable tabIndex={0} role="button" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { setCurrentId(s.id); setSelectedId(null); } }} onDragStart={() => setDragSlideId(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => reorder(s.id)} onClick={() => { setCurrentId(s.id); setSelectedId(null); }}><span className="slide-number">{String(i + 1).padStart(2, "0")}</span><div className="thumbnail"><SlideCanvas slide={s} selectedId={null} editingId={null} preview onSelect={() => {}} onEdit={() => {}} onMoveResize={() => {}} onContent={() => {}} /></div><div className="thumb-actions"><button onClick={(e) => { e.stopPropagation(); duplicateSlide(s.id); }} title="Дублировать">⧉</button><button onClick={(e) => { e.stopPropagation(); deleteSlide(s.id); }} title="Удалить">×</button></div></div>)}</div><div className="add-wrap"><button className="add-slide" onClick={() => setPresetOpen(!presetOpen)}>＋ Добавить слайд</button>{presetOpen && <div className="popover presets"><strong>Выберите раскладку</strong>{Object.keys(presets).map((p) => <button key={p} onClick={() => addSlide(p as keyof typeof presets)}><span className="preset-icon" />{p}</button>)}</div>}</div></aside>
-      <section className="canvas-area"><div className="canvas-toolbar"><span>Слайд {current.order + 1}</span><span>16:9 · 12 × 8</span></div><div className="canvas-stage"><SlideCanvas slide={current} selectedId={selectedId} editingId={editingId} preview={preview} onSelect={(id) => { setSelectedId(id); if (!id) setEditingId(null); }} onEdit={setEditingId} onMoveResize={(id, area) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, grid: area } : b) }))} onContent={(id, content) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, content } : b) }))} /></div>{!preview && <div className="canvas-actions"><button className="primary add-block" onClick={() => setAddBlockOpen(!addBlockOpen)}>＋ Добавить блок</button>{addBlockOpen && <div className="popover blocks"><div className="menu-label">Добавить блок</div>{(["text", "metric", "mockup", "image", "table", "chart", "divider"] as BlockType[]).map((type) => <button key={type} onClick={() => addBlock(type)}><span>{({ text: "T", metric: "%", mockup: "▣", image: "▧", table: "▦", chart: "▥", divider: "—" } as Record<string, string>)[type]}</span>{({ text: "Текст", metric: "Метрика", mockup: "Мокап", image: "Изображение", table: "Таблица", chart: "График", divider: "Разделитель" } as Record<string, string>)[type]}</button>)}</div>}</div>}</section>
-      <aside className="inspector"><div className="panel-title"><span>{selected ? "Настройки блока" : "Настройки слайда"}</span>{selected && <small>{selected.type}</small>}</div>{selected ? <BlockInspector block={selected} patch={patchSelectedContent} upload={upload} duplicate={duplicateBlock} remove={removeSelected} /> : <div className="inspector-body"><Field label="Фон"><input type="color" value={current.background} onChange={(e) => updateCurrent((s) => ({ ...s, background: e.target.value }))} /><input value={current.background} onChange={(e) => updateCurrent((s) => ({ ...s, background: e.target.value }))} /></Field><Field label="Тема"><select disabled><option>Demo Default</option></select></Field><Field label="Сетка"><div className="read-only">12 колонок × 8 строк</div></Field><div className="tip"><strong>Быстрый старт</strong><p>Добавьте блок или дважды нажмите на текст, чтобы отредактировать его.</p></div></div>}</aside>
+      <aside className="slides-panel"><div className="panel-title"><span>Слайды</span><small>{project.slides.length}</small></div><div className="slide-list">{project.slides.map((s, i) => <div key={s.id} className={`thumbnail-row ${s.id === current.id ? "active" : ""}`} draggable tabIndex={0} role="button" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { setCurrentId(s.id); setSelectedId(null); } }} onDragStart={() => setDragSlideId(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => reorder(s.id)} onClick={() => { setCurrentId(s.id); setSelectedId(null); }}><span className="slide-number">{String(i + 1).padStart(2, "0")}</span><div className="thumbnail"><SlideCanvas slide={s} settings={project.presentationSettings} selectedId={null} editingId={null} preview onSelect={() => {}} onEdit={() => {}} onMoveResize={() => {}} onContent={() => {}} /></div><div className="thumb-actions"><Button view="flat" onClick={(e) => { e.stopPropagation(); duplicateSlide(s.id); }} title="Дублировать"><Icon data={Copy} size={14} /></Button><Button view="flat-danger" onClick={(e) => { e.stopPropagation(); deleteSlide(s.id); }} title="Удалить"><Icon data={TrashBin} size={14} /></Button></div></div>)}</div><div className="add-wrap"><Button view="outlined-action" width="max" onClick={() => setPresetOpen(!presetOpen)}><Icon data={Plus} size={16} />Добавить слайд</Button>{presetOpen && <div className="popover presets"><strong>Выберите раскладку</strong>{Object.keys(presets).map((p) => <button key={p} onClick={() => addSlide(p as keyof typeof presets)}><span className="preset-icon" />{p}</button>)}</div>}</div></aside>
+      <section className="canvas-area"><div className="canvas-toolbar"><span>Слайд {current.order + 1}</span><span>16:9 · {project.presentationSettings.grid.columns} × {project.presentationSettings.grid.rows}</span></div><div className="canvas-stage"><SlideCanvas slide={current} settings={project.presentationSettings} selectedId={selectedId} editingId={editingId} preview={preview} onSelect={(id) => { setSelectedId(id); if (!id) setEditingId(null); }} onEdit={setEditingId} onMoveResize={(id, area) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, grid: area } : b) }))} onContent={(id, content) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, content } : b) }))} /></div>{!preview && <div className="canvas-actions"><Button view="action" size="l" onClick={() => setAddBlockOpen(!addBlockOpen)}><Icon data={Plus} size={18} />Добавить блок</Button>{addBlockOpen && <div className="popover blocks"><div className="menu-label">Добавить блок</div>{(["text", "metric", "mockup", "image", "table", "chart", "divider"] as BlockType[]).map((type) => <button key={type} onClick={() => addBlock(type)}><span>{({ text: "T", metric: "%", mockup: "▣", image: "▧", table: "▦", chart: "▥", divider: "—" } as Record<string, string>)[type]}</span>{({ text: "Текст", metric: "Метрика", mockup: "Мокап", image: "Изображение", table: "Таблица", chart: "График", divider: "Разделитель" } as Record<string, string>)[type]}</button>)}</div>}</div>}</section>
+      <aside className="inspector"><TabProvider value={inspectorTab} onUpdate={setInspectorTab}><div className="inspector-tabs"><TabList size="m"><Tab value="context" icon={<Icon data={LayoutCells} size={16} />}>Объект</Tab><Tab value="presentation" icon={<Icon data={Gear} size={16} />}>Презентация</Tab></TabList></div><TabPanel value="context"><div className="panel-title"><span>{selected ? "Настройки блока" : "Настройки слайда"}</span>{selected && <small>{selected.type}</small>}</div>{selected ? <BlockInspector block={selected} patch={patchSelectedContent} upload={upload} duplicate={duplicateBlock} remove={removeSelected} /> : <div className="inspector-body"><Field label="Фон текущего слайда"><div className="read-only">Используется цвет презентации</div></Field><Field label="Тема"><div className="read-only">Demo Default</div></Field><div className="tip"><strong>Быстрый старт</strong><p>Добавьте блок или дважды нажмите на текст, чтобы отредактировать его.</p></div></div>}</TabPanel><TabPanel value="presentation"><PresentationInspector project={project} update={updatePresentationSettings} /></TabPanel></TabProvider></aside>
     </div>
     <div className="mobile-warning">Редактор презентаций лучше работает на экране шириной от 1280 px.</div>
-  </main>;
+  </main></ThemeProvider>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span><div>{children}</div></label>; }
+
+function PresentationInspector({ project, update }: { project: Project; update: (settings: PresentationSettings) => void }) {
+  const settings = project.presentationSettings;
+  const minColumns = Math.max(8, ...project.slides.flatMap((slide) => slide.blocks.map((block) => block.grid.x + block.grid.w)));
+  const minRows = Math.max(6, ...project.slides.flatMap((slide) => slide.blocks.map((block) => block.grid.y + block.grid.h)));
+  const patchPadding = (side: keyof PresentationSettings["padding"], value: number) => update({ ...settings, padding: { ...settings.padding, [side]: value } });
+  const patchGrid = (key: keyof PresentationSettings["grid"], value: number) => {
+    const safeValue = key === "columns" ? Math.min(16, Math.max(minColumns, value)) : key === "rows" ? Math.min(12, Math.max(minRows, value)) : Math.min(24, Math.max(0, value));
+    update({ ...settings, grid: { ...settings.grid, [key]: safeValue } });
+  };
+  return <div className="inspector-body presentation-settings">
+    <div className="settings-heading"><Icon data={Gear} size={18} /><div><strong>Вся презентация</strong><p>Эти параметры применяются ко всем слайдам и блокам.</p></div></div>
+    <Field label="Цвет слайдов"><input type="color" value={settings.slideColor} onChange={(e) => update({ ...settings, slideColor: e.target.value })} /><TextInput value={settings.slideColor} onUpdate={(slideColor) => update({ ...settings, slideColor })} /></Field>
+    <div className="settings-section"><strong>Отступы слайда</strong><div className="padding-grid"><Field label="Сверху"><NumberInput value={settings.padding.top} min={0} max={160} onUpdate={(value) => patchPadding("top", value ?? 0)} /></Field><Field label="Справа"><NumberInput value={settings.padding.right} min={0} max={160} onUpdate={(value) => patchPadding("right", value ?? 0)} /></Field><Field label="Снизу"><NumberInput value={settings.padding.bottom} min={0} max={160} onUpdate={(value) => patchPadding("bottom", value ?? 0)} /></Field><Field label="Слева"><NumberInput value={settings.padding.left} min={0} max={160} onUpdate={(value) => patchPadding("left", value ?? 0)} /></Field></div></div>
+    <div className="settings-section"><strong>Сетка</strong><div className="position-grid"><Field label="Колонки"><NumberInput value={settings.grid.columns} min={minColumns} max={16} onUpdate={(value) => patchGrid("columns", value ?? minColumns)} /></Field><Field label="Строки"><NumberInput value={settings.grid.rows} min={minRows} max={12} onUpdate={(value) => patchGrid("rows", value ?? minRows)} /></Field></div><Field label={`Расстояние между клетками · ${settings.grid.gap} px`}><Slider value={settings.grid.gap} min={0} max={24} step={1} marks={0} onUpdate={(value) => patchGrid("gap", Number(value))} /></Field></div>
+    <div className="settings-section"><strong>Блоки</strong><Field label={`Скругление · ${settings.blockRadius} px`}><Slider value={settings.blockRadius} min={0} max={32} step={1} marks={0} onUpdate={(value) => update({ ...settings, blockRadius: Number(value) })} /></Field></div>
+  </div>;
+}
 
 function BlockInspector({ block, patch, upload, duplicate, remove }: { block: Block; patch: (p: Record<string, unknown>) => void; upload: (e: ChangeEvent<HTMLInputElement>) => void; duplicate: () => void; remove: () => void }) {
   const c = block.content;
@@ -154,5 +201,5 @@ function BlockInspector({ block, patch, upload, duplicate, remove }: { block: Bl
     {block.type === "chart" && <><Field label="Тип"><select value={String(c.chartType)} onChange={(e) => patch({ chartType: e.target.value })}><option>Bar</option><option>Line</option></select></Field><Field label="Данные"><textarea rows={7} value={(c.points as Array<{ label: string; value: number }>).map((p) => `${p.label} | ${p.value}`).join("\n")} onChange={(e) => patch({ points: e.target.value.split("\n").slice(0, 30).map((line) => { const [label, value] = line.split("|"); return { label: label?.trim() || "—", value: Number(value) || 0 }; }) })} /></Field></>}
     {block.type === "table" && <><Field label="Строки"><div className="stepper"><button onClick={() => patch({ rows: (c.rows as string[][]).slice(0, -1) })} disabled={(c.rows as string[][]).length <= 1}>−</button><span>{(c.rows as string[][]).length}</span><button onClick={() => { const rows = c.rows as string[][]; patch({ rows: [...rows, Array(rows[0]?.length || 2).fill("")] .slice(0, 30) }); }}>＋</button></div></Field><p className="helper">Дважды нажмите на таблицу и редактируйте ячейки прямо на слайде.</p></>}
     {block.type === "divider" && <><Field label="Вариант"><select value={String(c.variant)} onChange={(e) => patch({ variant: e.target.value })}><option value="label">Section label</option><option value="line">Divider line</option></select></Field>{c.variant === "label" && <Field label="Подпись"><input value={String(c.label)} onChange={(e) => patch({ label: e.target.value })} /></Field>}</>}
-    <div className="inspector-actions"><button onClick={duplicate}>⧉ Дублировать</button><button className="danger" onClick={remove}>Удалить</button></div></div>;
+    <div className="inspector-actions"><Button view="outlined" onClick={duplicate}><Icon data={Copy} size={16} />Дублировать</Button><Button view="outlined-danger" onClick={remove}><Icon data={TrashBin} size={16} />Удалить</Button></div></div>;
 }

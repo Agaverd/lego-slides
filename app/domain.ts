@@ -17,12 +17,27 @@ export type Slide = {
   blocks: Block[];
 };
 
+export type PresentationSettings = {
+  slideColor: string;
+  padding: { top: number; right: number; bottom: number; left: number };
+  grid: { columns: number; rows: number; gap: number };
+  blockRadius: number;
+};
+
+export const defaultPresentationSettings: PresentationSettings = {
+  slideColor: "#FFFFFF",
+  padding: { top: 32, right: 32, bottom: 32, left: 32 },
+  grid: { columns: 12, rows: 8, gap: 8 },
+  blockRadius: 8,
+};
+
 export type Project = {
   id: string;
   title: string;
   createdAt: string;
   updatedAt: string;
   themeId: "demo-default";
+  presentationSettings: PresentationSettings;
   slides: Slide[];
 };
 
@@ -30,6 +45,7 @@ export type PresentationModel = {
   title: string;
   aspectRatio: "16:9";
   theme: string;
+  settings: PresentationSettings;
   slides: Array<{ id: string; elements: Array<{ kind: BlockType; frame: GridArea; data: Record<string, unknown> }> }>;
 };
 
@@ -57,7 +73,7 @@ const slide = (order: number, title: string, blocks: Block[]): Slide => ({ id: i
 export function createDemoProject(): Project {
   const now = new Date().toISOString();
   return {
-    id: id(), title: "Recommendations Demo", createdAt: now, updatedAt: now, themeId: "demo-default",
+    id: id(), title: "Recommendations Demo", createdAt: now, updatedAt: now, themeId: "demo-default", presentationSettings: structuredClone(defaultPresentationSettings),
     slides: [
       slide(0, "Ключевые результаты", [
         { ...createBlock("text", { x: 0, y: 0, w: 12, h: 2 }), content: { variant: "heading", text: "Новое ранжирование растит ключевые метрики" } },
@@ -87,5 +103,5 @@ export const presets = {
 } satisfies Record<string, Array<Partial<Block>>>;
 
 export function normalizeProject(project: Project): PresentationModel {
-  return { title: project.title, aspectRatio: "16:9", theme: project.themeId, slides: project.slides.map((s) => ({ id: s.id, elements: s.blocks.map((b) => ({ kind: b.type, frame: b.grid, data: b.content })) })) };
+  return { title: project.title, aspectRatio: "16:9", theme: project.themeId, settings: project.presentationSettings, slides: project.slides.map((s) => ({ id: s.id, elements: s.blocks.map((b) => ({ kind: b.type, frame: b.grid, data: b.content })) })) };
 }
