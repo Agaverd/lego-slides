@@ -29,6 +29,7 @@
   --ds-accent: #f6f6f6;
   --ds-on-accent: #171717;
   --ds-accent-soft: #343434;
+  --ds-canvas-accent: #f3ec9b;
   --ds-danger: #ff5b66;
 
   /* Spacing */
@@ -52,4 +53,3 @@
 ::selection { background: #ffffff32; color: #fff; }
 
 * { scrollbar-color: #444 transparent; scrollbar-width: thin; }
-

@@ -85,15 +85,46 @@ function RichTextToolbar() {
 
 function EmptyMedia({ label }: { label: string }) { return <div className="empty-media"><span>▧</span>{label}</div>; }
 
+const deviceFrames = {
+  "iPhone 17": {
+    colors: { White: "/device-frames/iphone-17-white.png", Black: "/device-frames/iphone-17-black.png", Pink: "/device-frames/iphone-17-pink.png" },
+    screen: { left: "4.2%", top: "1.6%", width: "91.6%", height: "96.4%", borderRadius: "13% / 6%" },
+  },
+  Android: {
+    colors: { White: "/device-frames/android-white.png", Black: "/device-frames/android-black.png" },
+    screen: { left: "4.1%", top: "1.7%", width: "91.7%", height: "96.5%", borderRadius: "12% / 5.5%" },
+  },
+  "MacBook Air": {
+    colors: { Silver: "/device-frames/macbook-air-silver.png" },
+    screen: { left: "10.1%", top: "3.4%", width: "79.8%", height: "85.4%", borderRadius: "1.5%" },
+  },
+} as const;
+
+type DeviceModel = keyof typeof deviceFrames;
+
+const backgroundPresets: Record<string, string> = {
+  "soft-blue": "linear-gradient(135deg, #cfe8ff 0%, #d8f3e7 52%, #fbf6df 100%)",
+  "night": "radial-gradient(circle at 30% 25%, #2c405e 0%, #10141d 48%, #07090d 100%)",
+  "paper": "linear-gradient(135deg, #f4f1ea, #d7d3ca)",
+  "sunset": "linear-gradient(145deg, #f6ae72, #d96f82 46%, #5f5aa8)",
+  "forest": "linear-gradient(145deg, #b8d6b0, #4d8065 48%, #173e37)",
+  "mesh": "radial-gradient(circle at 18% 22%, #81d4fa 0 18%, transparent 42%), radial-gradient(circle at 78% 28%, #c6ffdd 0 16%, transparent 40%), radial-gradient(circle at 52% 82%, #f8b4d9 0 20%, transparent 48%), #e7e8ff",
+};
+
 function Mockup({ block }: { block: Block }) {
-  const c = block.content; const preset = String(c.preset); const src = String(c.src ?? "");
-  const screen = <div className="mockup-screen">{src ? <img src={src} alt="Скриншот продукта" style={{ objectFit: c.fit as "cover" | "contain" }} /> : <div className="product-skeleton"><i /><i /><i /><b /></div>}</div>; // eslint-disable-line @next/next/no-img-element -- local data URLs are user content
-  return <div className={`mockup preset-${preset.toLowerCase().replaceAll(" ", "-").replace("/", "-")}`} style={{ background: String(c.background ?? "#EEF0F3"), padding: Number(c.padding ?? 16) }}>
-    {preset === "Browser" && <div className="browser-frame"><div className="browser-bar"><i /><i /><i /><span>demo.product</span></div>{screen}</div>}
-    {preset === "Desktop" && <div className="desktop-frame">{screen}<span /></div>}
-    {preset === "Phone" && <div className="phone-frame">{screen}</div>}
-    {preset === "Two phones" && <div className="phones"><div className="phone-frame">{screen}</div><div className="phone-frame secondary">{screen}</div></div>}
-    {preset === "Before / After" && <div className="comparison"><div><span>ДО</span>{screen}</div><div><span>ПОСЛЕ</span>{screen}</div></div>}
+  const c = block.content; const src = String(c.src ?? "");
+  const model = (String(c.deviceModel ?? "iPhone 17") in deviceFrames ? String(c.deviceModel ?? "iPhone 17") : "iPhone 17") as DeviceModel;
+  const frame = deviceFrames[model]; const availableColors = Object.keys(frame.colors); const color = availableColors.includes(String(c.deviceColor)) ? String(c.deviceColor) : availableColors[0];
+  const frameSrc = (frame.colors as Record<string, string>)[color]; const screenStyle = frame.screen;
+  const backgroundMode = String(c.backgroundMode ?? "Image"); const preset = String(c.backgroundPreset ?? "mesh");
+  const stageBackground = backgroundMode === "None" ? "transparent" : backgroundMode === "Video" ? "linear-gradient(145deg, #171b21, #38465b)" : backgroundPresets[preset] ?? String(c.background ?? "#EEF0F3");
+  return <div className="mockup-device-stage" style={{ background: stageBackground }}>
+    <div className={`device-composite ${model === "MacBook Air" ? "is-laptop" : "is-phone"}`} style={{ transform: `translate(${Number(c.horizontal ?? 0)}px, ${Number(c.vertical ?? 0)}px) scale(${Number(c.scale ?? 90) / 100})` }}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- local user image */}
+      <div className="device-screen" style={screenStyle}>{src ? <img src={src} alt="Скриншот продукта" style={{ objectFit: c.fit as "cover" | "contain" }} /> : <div className="product-skeleton"><i /><i /><i /><b /></div>}</div>
+      {/* eslint-disable-next-line @next/next/no-img-element -- bundled transparent device frame */}
+      <img className="device-frame-image" src={frameSrc} alt={`${model}, ${color}`} />
+    </div>
   </div>;
 }
 
@@ -127,7 +158,9 @@ function SlideCanvas({ slide, settings, selectedId, editingId, preview, onSelect
   onSelect: (id: string | null) => void; onEdit: (id: string | null) => void; onMoveResize: (id: string, area: GridArea) => void; onContent: (id: string, content: Record<string, unknown>) => void; onDropBlock?: (type: BlockType, origin: { x: number; y: number }) => void;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [interaction, setInteraction] = useState<{ id: string; area: FloatingArea } | null>(null);
+  const [interaction, setInteraction] = useState<{ id: string; area: FloatingArea; mode: "move" | "resize" } | null>(null);
+  const [guide, setGuide] = useState<{ area: FloatingArea; mode: "move" | "resize" } | null>(null);
+  const [yieldingIds, setYieldingIds] = useState<string[]>([]);
   const startPointer = (e: ReactPointerEvent, block: Block, mode: "move" | ResizeEdge) => {
     if (preview || editingId === block.id) return;
     e.stopPropagation(); e.preventDefault(); onSelect(block.id);
@@ -139,7 +172,7 @@ function SlideCanvas({ slide, settings, selectedId, editingId, preview, onSelect
     const gapX = rect.width * settings.grid.gap / 1200; const gapY = rect.height * settings.grid.gap / 675;
     const pitchX = (rect.width - padLeft - padRight - gapX * (settings.grid.columns - 1)) / settings.grid.columns + gapX;
     const pitchY = (rect.height - padTop - padBottom - gapY * (settings.grid.rows - 1)) / settings.grid.rows + gapY;
-    let live: FloatingArea = { ...start.grid };
+    let live: FloatingArea = { ...start.grid }; let stepped: GridArea = { ...start.grid }; let dwellKey = ""; let dwellTimer = 0;
     const move = (event: PointerEvent) => {
       const dx = (event.clientX - start.x) / pitchX; const dy = (event.clientY - start.y) / pitchY;
       let next: FloatingArea = { ...start.grid };
@@ -148,19 +181,36 @@ function SlideCanvas({ slide, settings, selectedId, editingId, preview, onSelect
       if (mode === "bottom") next.h = start.grid.h + dy;
       if (mode === "left") next = { ...next, x: start.grid.x + dx, w: start.grid.w - dx };
       if (mode === "top") next = { ...next, y: start.grid.y + dy, h: start.grid.h - dy };
-      if (mode === "move") { next.x = Math.max(0, Math.min(settings.grid.columns - next.w, magnetic(next.x))); next.y = Math.max(0, Math.min(settings.grid.rows - next.h, magnetic(next.y))); }
-      if (mode === "right") next.w = Math.max(1, Math.min(settings.grid.columns - next.x, magnetic(next.w)));
-      if (mode === "bottom") next.h = Math.max(1, Math.min(settings.grid.rows - next.y, magnetic(next.h)));
-      if (mode === "left") { const right = start.grid.x + start.grid.w; next.x = Math.max(0, Math.min(right - 1, magnetic(next.x))); next.w = right - next.x; }
-      if (mode === "top") { const bottom = start.grid.y + start.grid.h; next.y = Math.max(0, Math.min(bottom - 1, magnetic(next.y))); next.h = bottom - next.y; }
-      live = next; setInteraction({ id: block.id, area: next });
+      if (mode === "move") {
+        next.x = Math.max(0, Math.min(settings.grid.columns - next.w, magnetic(next.x))); next.y = Math.max(0, Math.min(settings.grid.rows - next.h, magnetic(next.y)));
+        live = next; setInteraction({ id: block.id, area: next, mode: "move" });
+        const target = { x: Math.round(next.x), y: Math.round(next.y), w: start.grid.w, h: start.grid.h }; setGuide({ area: target, mode: "move" });
+        const colliders = slide.blocks.filter((candidate) => candidate.id !== block.id && overlaps(target, candidate.grid)).map((candidate) => candidate.id);
+        const key = `${target.x}:${target.y}:${colliders.join(",")}`;
+        if (colliders.length && key !== dwellKey) { window.clearTimeout(dwellTimer); dwellKey = key; setYieldingIds([]); dwellTimer = window.setTimeout(() => setYieldingIds(colliders), 1200); }
+        if (!colliders.length) { window.clearTimeout(dwellTimer); dwellKey = ""; setYieldingIds([]); }
+        return;
+      }
+      if (mode === "right") next.w = Math.max(1, Math.min(settings.grid.columns - next.x, next.w));
+      if (mode === "bottom") next.h = Math.max(1, Math.min(settings.grid.rows - next.y, next.h));
+      if (mode === "left") { const right = start.grid.x + start.grid.w; next.x = Math.max(0, Math.min(right - 1, next.x)); next.w = right - next.x; }
+      if (mode === "top") { const bottom = start.grid.y + start.grid.h; next.y = Math.max(0, Math.min(bottom - 1, next.y)); next.h = bottom - next.y; }
+      live = next; setGuide({ area: next, mode: "resize" });
+      const stepX = dx >= 0 ? Math.floor(dx) : Math.ceil(dx); const stepY = dy >= 0 ? Math.floor(dy) : Math.ceil(dy);
+      let candidate: GridArea = { ...start.grid };
+      if (mode === "right") candidate.w = start.grid.w + stepX;
+      if (mode === "bottom") candidate.h = start.grid.h + stepY;
+      if (mode === "left") candidate = { ...candidate, x: start.grid.x + stepX, w: start.grid.w - stepX };
+      if (mode === "top") candidate = { ...candidate, y: start.grid.y + stepY, h: start.grid.h - stepY };
+      if (candidate.w >= 1 && candidate.h >= 1 && canPlace(candidate, slide.blocks, settings.grid.columns, settings.grid.rows, block.id)) stepped = candidate;
+      setInteraction({ id: block.id, area: stepped, mode: "resize" });
     };
     const up = () => {
-      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
-      const snapped = { x: Math.round(live.x), y: Math.round(live.y), w: Math.round(live.w), h: Math.round(live.h) };
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.clearTimeout(dwellTimer);
+      const snapped = mode === "move" ? { x: Math.round(live.x), y: Math.round(live.y), w: start.grid.w, h: start.grid.h } : stepped;
       const finalArea = canPlace(snapped, slide.blocks, settings.grid.columns, settings.grid.rows, block.id) ? snapped : start.grid;
-      setInteraction({ id: block.id, area: finalArea }); onMoveResize(block.id, finalArea);
-      window.setTimeout(() => setInteraction(null), 120);
+      setInteraction({ id: block.id, area: finalArea, mode: mode === "move" ? "move" : "resize" }); onMoveResize(block.id, finalArea); setGuide(null); setYieldingIds([]);
+      window.setTimeout(() => setInteraction(null), 140);
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
@@ -175,11 +225,12 @@ function SlideCanvas({ slide, settings, selectedId, editingId, preview, onSelect
   const canvasStyle = { background: settings.slideColor, "--grid-columns": settings.grid.columns, "--grid-rows": settings.grid.rows, "--grid-gap": `${settings.grid.gap}px`, "--grid-radius": `${Math.max(4, settings.blockRadius)}px` } as CSSProperties;
   return <div ref={canvasRef} className={`slide-canvas ${preview ? "is-preview" : ""}`} style={canvasStyle} onPointerDown={() => onSelect(null)} onDragOver={(e) => { if (onDropBlock) e.preventDefault(); }} onDrop={dropBlock} role="presentation">
     {!preview && <div className="grid-cells" style={{ inset: `${settings.padding.top / 6.75}% ${settings.padding.right / 12}% ${settings.padding.bottom / 6.75}% ${settings.padding.left / 12}%` }}>{Array.from({ length: settings.grid.columns * settings.grid.rows }, (_, index) => <i key={index} />)}</div>}
+    {guide && <div className={`interaction-guide guide-${guide.mode}`} style={getBlockStyle(guide.area, settings)} />}
     {slide.blocks.length === 0 && <div className="empty-slide"><strong>Пустой слайд</strong><span>Добавьте первый блок</span></div>}
-    {slide.blocks.map((block) => <div key={block.id} className={`slide-block block-${block.type} ${selectedId === block.id ? "is-selected" : ""} ${interaction?.id === block.id ? "is-interacting" : ""}`} style={getBlockStyle(interaction?.id === block.id ? interaction.area : block.grid, settings)} onPointerDown={(e) => startPointer(e, block, "move")} onDoubleClick={(e) => { e.stopPropagation(); onSelect(block.id); if (block.type === "text" || block.type === "table") onEdit(block.id); }}>
+    {slide.blocks.map((block) => <div key={block.id} className={`slide-block block-${block.type} ${selectedId === block.id ? "is-selected" : ""} ${interaction?.id === block.id ? "is-interacting" : ""} ${yieldingIds.includes(block.id) ? "is-yielding" : ""}`} style={getBlockStyle(interaction?.id === block.id ? interaction.area : block.grid, settings)} onPointerDown={(e) => startPointer(e, block, "move")} onDoubleClick={(e) => { e.stopPropagation(); onSelect(block.id); if (block.type === "text" || block.type === "table") onEdit(block.id); }}>
       {editingId === block.id && block.type === "text" && <RichTextToolbar />}
       <div className="block-inner"><BlockContent block={block} editing={editingId === block.id} onContent={(content) => onContent(block.id, content)} /></div>
-      {!preview && (["top", "right", "bottom", "left"] as ResizeEdge[]).map((edge) => <button key={edge} className={`edge-resize edge-resize-${edge}`} aria-label={`Изменить размер: ${edge}`} onPointerDown={(e) => startPointer(e, block, edge)}><span /></button>)}
+      {!preview && selectedId === block.id && (["top", "right", "bottom", "left"] as ResizeEdge[]).map((edge) => <button key={edge} className={`edge-resize edge-resize-${edge}`} aria-label={`Изменить размер: ${edge}`} onPointerDown={(e) => startPointer(e, block, edge)}><span /></button>)}
     </div>)}
   </div>;
 }
@@ -262,6 +313,30 @@ export function DemoSlidesEditor() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span><div>{children}</div></label>; }
 
+function DresserRange({ label, value, min, max, unit, onUpdate }: { label: string; value: number; min: number; max: number; unit: string; onUpdate: (value: number) => void }) {
+  return <label className="dresser-range"><span>{label}</span><input type="range" min={min} max={max} value={value} onChange={(e) => onUpdate(Number(e.target.value))} /><output>{value}{unit}</output></label>;
+}
+
+function DresserTabs({ value, options, onUpdate }: { value: string; options: string[]; onUpdate: (value: string) => void }) {
+  return <div className="dresser-tabs">{options.map((option) => <button type="button" key={option} className={value === option ? "active" : ""} onClick={() => onUpdate(option)}>{option}</button>)}</div>;
+}
+
+function MockupInspector({ block, patch, upload }: { block: Block; patch: (p: Record<string, unknown>) => void; upload: (e: ChangeEvent<HTMLInputElement>) => void }) {
+  const c = block.content; const model = (String(c.deviceModel ?? "iPhone 17") in deviceFrames ? String(c.deviceModel ?? "iPhone 17") : "iPhone 17") as DeviceModel;
+  const colors = Object.keys(deviceFrames[model].colors); const color = colors.includes(String(c.deviceColor)) ? String(c.deviceColor) : colors[0];
+  const backgroundMode = String(c.backgroundMode ?? "Image"); const backgroundStyle = String(c.backgroundStyle ?? "Mesh"); const backgroundPreset = String(c.backgroundPreset ?? "mesh");
+  return <div className="mockup-controls">
+    {/* eslint-disable-next-line @next/next/no-img-element -- local user preview */}
+    <Field label="Device"><label className="device-upload-card">{c.src ? <img src={String(c.src)} alt="Загруженный экран" /> : <span className="device-upload-preview">▧</span>}<strong>{c.src ? "screen.png" : "Добавить экран"}</strong><small>{model}</small><b>{c.src ? "Заменить" : "+"}</b><input type="file" accept="image/*" onChange={upload} /></label></Field>
+    <Field label="Phone model"><select value={model} onChange={(e) => { const next = e.target.value as DeviceModel; patch({ deviceModel: next, deviceColor: Object.keys(deviceFrames[next].colors)[0] }); }}>{Object.keys(deviceFrames).map((option) => <option key={option}>{option}</option>)}</select></Field>
+    <Field label="Phone color"><select value={color} onChange={(e) => patch({ deviceColor: e.target.value })}>{colors.map((option) => <option key={option}>{option}</option>)}</select></Field>
+    <DresserRange label="Scale" value={Number(c.scale ?? 90)} min={35} max={180} unit="%" onUpdate={(scale) => patch({ scale })} />
+    <DresserRange label="Horizontal" value={Number(c.horizontal ?? 0)} min={-320} max={320} unit="px" onUpdate={(horizontal) => patch({ horizontal })} />
+    <DresserRange label="Vertical" value={Number(c.vertical ?? 0)} min={-240} max={240} unit="px" onUpdate={(vertical) => patch({ vertical })} />
+    <section className="dresser-section"><span>Background</span><DresserTabs value={backgroundMode} options={["Image", "Video", "None"]} onUpdate={(backgroundMode) => patch({ backgroundMode })} />{backgroundMode !== "None" && <><DresserTabs value={backgroundStyle} options={["Solid", "Photo", "Mesh"]} onUpdate={(backgroundStyle) => patch({ backgroundStyle, backgroundPreset: backgroundStyle === "Solid" ? "paper" : backgroundStyle === "Photo" ? "forest" : "mesh" })} /><div className="background-presets">{Object.entries(backgroundPresets).map(([name, background]) => <button type="button" key={name} aria-label={`Фон ${name}`} className={backgroundPreset === name ? "active" : ""} style={{ background }} onClick={() => patch({ backgroundPreset: name })} />)}</div></>}</section>
+  </div>;
+}
+
 function PresentationInspector({ project, update }: { project: Project; update: (settings: PresentationSettings) => void }) {
   const settings = project.presentationSettings;
   const minColumns = Math.max(8, ...project.slides.flatMap((slide) => slide.blocks.map((block) => block.grid.x + block.grid.w)));
@@ -285,9 +360,8 @@ function BlockInspector({ block, patch, upload, duplicate, remove }: { block: Bl
   return <div className="inspector-body"><div className="position-grid"><Field label="X"><input value={block.grid.x + 1} readOnly /></Field><Field label="Y"><input value={block.grid.y + 1} readOnly /></Field><Field label="Ширина"><input value={block.grid.w} readOnly /></Field><Field label="Высота"><input value={block.grid.h} readOnly /></Field></div>
     {block.type === "text" && <><Field label="Вариант"><select value={String(c.variant)} onChange={(e) => patch({ variant: e.target.value })}>{["heading", "subheading", "body", "insight"].map((x) => <option key={x}>{x}</option>)}</select></Field><Field label="Текст"><textarea rows={7} value={String(c.text)} onChange={(e) => patch({ text: e.target.value, html: undefined })} /></Field><p className="helper">Дважды нажмите на текстовый блок для визуального форматирования.</p></>}
     {block.type === "metric" && <><Field label="Значение"><input value={String(c.value)} onChange={(e) => patch({ value: e.target.value })} /></Field><Field label="Подпись"><input value={String(c.label)} onChange={(e) => patch({ label: e.target.value })} /></Field><Field label="Сравнение"><input value={String(c.comparison)} onChange={(e) => patch({ comparison: e.target.value })} /></Field><Field label="Комментарий"><textarea rows={3} value={String(c.detail)} onChange={(e) => patch({ detail: e.target.value })} /></Field></>}
-    {(block.type === "image" || block.type === "mockup") && <><Field label="Скриншот"><label className="upload-button">{c.src ? "Заменить" : "Загрузить"}<input type="file" accept="image/*" onChange={upload} /></label></Field><Field label="Вписывание"><select value={String(c.fit)} onChange={(e) => patch({ fit: e.target.value })}><option value="cover">Cover</option><option value="contain">Contain</option></select></Field></>}
-    {block.type === "image" && <Field label="Выравнивание"><select value={String(c.align)} onChange={(e) => patch({ align: e.target.value })}>{["top", "center", "bottom"].map((x) => <option key={x}>{x}</option>)}</select></Field>}
-    {block.type === "mockup" && <><Field label="Устройство"><select value={String(c.preset)} onChange={(e) => patch({ preset: e.target.value })}>{["Browser", "Desktop", "Phone", "Two phones", "Before / After"].map((x) => <option key={x}>{x}</option>)}</select></Field><Field label="Фон"><input type="color" value={String(c.background)} onChange={(e) => patch({ background: e.target.value })} /><input value={String(c.background)} onChange={(e) => patch({ background: e.target.value })} /></Field><Field label={`Отступ · ${String(c.padding)} px`}><input type="range" min="0" max="40" value={Number(c.padding)} onChange={(e) => patch({ padding: Number(e.target.value) })} /></Field></>}
+    {block.type === "image" && <><Field label="Изображение"><label className="upload-button">{c.src ? "Заменить" : "Загрузить"}<input type="file" accept="image/*" onChange={upload} /></label></Field><Field label="Вписывание"><select value={String(c.fit)} onChange={(e) => patch({ fit: e.target.value })}><option value="cover">Cover</option><option value="contain">Contain</option></select></Field><Field label="Выравнивание"><select value={String(c.align)} onChange={(e) => patch({ align: e.target.value })}>{["top", "center", "bottom"].map((x) => <option key={x}>{x}</option>)}</select></Field></>}
+    {block.type === "mockup" && <MockupInspector block={block} patch={patch} upload={upload} />}
     {block.type === "chart" && <><Field label="Тип"><select value={String(c.chartType)} onChange={(e) => patch({ chartType: e.target.value })}><option>Bar</option><option>Line</option></select></Field><Field label="Данные"><textarea rows={7} value={(c.points as Array<{ label: string; value: number }>).map((p) => `${p.label} | ${p.value}`).join("\n")} onChange={(e) => patch({ points: e.target.value.split("\n").slice(0, 30).map((line) => { const [label, value] = line.split("|"); return { label: label?.trim() || "—", value: Number(value) || 0 }; }) })} /></Field></>}
     {block.type === "table" && <><Field label="Строки"><div className="stepper"><button onClick={() => patch({ rows: (c.rows as string[][]).slice(0, -1) })} disabled={(c.rows as string[][]).length <= 1}>−</button><span>{(c.rows as string[][]).length}</span><button onClick={() => { const rows = c.rows as string[][]; patch({ rows: [...rows, Array(rows[0]?.length || 2).fill("")] .slice(0, 30) }); }}>＋</button></div></Field><p className="helper">Дважды нажмите на таблицу и редактируйте ячейки прямо на слайде.</p></>}
     {block.type === "divider" && <><Field label="Вариант"><select value={String(c.variant)} onChange={(e) => patch({ variant: e.target.value })}><option value="label">Section label</option><option value="line">Divider line</option></select></Field>{c.variant === "label" && <Field label="Подпись"><input value={String(c.label)} onChange={(e) => patch({ label: e.target.value })} /></Field>}</>}
