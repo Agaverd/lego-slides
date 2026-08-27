@@ -1,0 +1,55 @@
+:root {
+  color-scheme: dark;
+
+  /* Typography */
+  --ds-font-sans: Inter, "SF Pro Text", "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  --ds-font-mono: "SFMono-Regular", Consolas, monospace;
+  --ds-font-size-xs: 10px;
+  --ds-font-size-sm: 12px;
+  --ds-font-size-md: 14px;
+  --ds-font-size-lg: 18px;
+  --ds-font-weight-regular: 400;
+  --ds-font-weight-medium: 600;
+  --ds-line-height-tight: 1.2;
+  --ds-line-height-body: 1.45;
+
+  /* Color roles sampled from the reference UI */
+  --ds-bg: #191919;
+  --ds-canvas: #111111;
+  --ds-surface: #1f1f1f;
+  --ds-surface-raised: #252525;
+  --ds-subtle: #2a2a2a;
+  --ds-control: #2d2d2d;
+  --ds-control-active: #454545;
+  --ds-border: #303030;
+  --ds-border-strong: #464646;
+  --ds-text: #f4f4f4;
+  --ds-text-secondary: #a2a2a2;
+  --ds-muted: #797979;
+  --ds-accent: #f6f6f6;
+  --ds-on-accent: #171717;
+  --ds-accent-soft: #343434;
+  --ds-danger: #ff5b66;
+
+  /* Spacing */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+
+  /* Shape, depth and motion */
+  --ds-radius-sm: 8px;
+  --ds-radius-md: 10px;
+  --ds-radius-lg: 14px;
+  --ds-radius-pill: 999px;
+  --ds-shadow-sm: 0 1px 0 #ffffff08 inset, 0 1px 2px #00000030;
+  --ds-shadow-lg: 0 18px 48px #00000052;
+  --ds-motion-fast: 120ms cubic-bezier(.2, .8, .2, 1);
+}
+
+::selection { background: #ffffff32; color: #fff; }
+
+* { scrollbar-color: #444 transparent; scrollbar-width: thin; }
+
