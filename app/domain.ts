@@ -14,20 +14,24 @@ export type Slide = {
   order: number;
   title: string;
   background: string;
+  backgroundMode?: "Image" | "None";
+  backgroundStyle?: "Mesh" | "Solid";
+  backgroundPreset?: string;
+  backgroundImage?: string;
   blocks: Block[];
 };
 
 export type PresentationSettings = {
   slideColor: string;
   padding: { top: number; right: number; bottom: number; left: number };
-  grid: { columns: number; rows: number; gap: number };
+  grid: { columns: number; rows: number; gap: number; cellRatio: "adaptive" | "square" };
   blockRadius: number;
 };
 
 export const defaultPresentationSettings: PresentationSettings = {
   slideColor: "#FFFFFF",
   padding: { top: 32, right: 32, bottom: 32, left: 32 },
-  grid: { columns: 12, rows: 8, gap: 8 },
+  grid: { columns: 12, rows: 8, gap: 8, cellRatio: "adaptive" },
   blockRadius: 8,
 };
 
@@ -68,7 +72,7 @@ export function createBlock(type: BlockType, grid?: GridArea): Block {
   return { id: id(), type, grid: grid ?? sizes[type], content: structuredClone(content[type]) };
 }
 
-const slide = (order: number, title: string, blocks: Block[]): Slide => ({ id: id(), order, title, background: "#FFFFFF", blocks });
+const slide = (order: number, title: string, blocks: Block[]): Slide => ({ id: id(), order, title, background: "#FFFFFF", backgroundMode: "Image", backgroundStyle: "Solid", backgroundPreset: "wb-blue", blocks });
 
 export function createDemoProject(): Project {
   const now = new Date().toISOString();

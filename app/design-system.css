@@ -53,3 +53,7 @@
 ::selection { background: #ffffff32; color: #fff; }
 
 * { scrollbar-color: #444 transparent; scrollbar-width: thin; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #4a4a4a; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: #666; background-clip: padding-box; }
