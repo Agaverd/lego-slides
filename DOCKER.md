@@ -48,3 +48,25 @@ docker compose up -d --build
 ```
 
 Для публичного сервера рекомендуется поставить перед контейнером reverse proxy (например, Caddy или Nginx) и включить HTTPS. Сам контейнер слушает порт `3000` внутри сети Docker.
+
+## Деплой готового образа из файла
+
+Если вместе с проектом передан файл `demo-slides-deploy.tar`, собирать приложение на сервере не требуется.
+
+Загрузите образ:
+
+```sh
+docker load -i demo-slides-deploy.tar
+```
+
+Запустите его:
+
+```sh
+docker run -d --name demo-slides --restart unless-stopped -p 3000:3000 demo-slides:deploy
+```
+
+Проверить состояние можно командой:
+
+```sh
+docker ps --filter name=demo-slides
+```

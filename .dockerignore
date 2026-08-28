@@ -10,5 +10,6 @@ coverage
 outputs
 work
 *.log
+demo-slides-deploy.tar
 .env
 .env.*
