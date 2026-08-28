@@ -24,6 +24,6 @@ export async function requestGoogleDriveToken(clientId: string) {
   return await new Promise<string>((resolve, reject) => {
     const client = window.google?.accounts.oauth2.initTokenClient({ client_id: clientId, scope: "https://www.googleapis.com/auth/drive.file", callback: (response) => response.access_token ? resolve(response.access_token) : reject(new Error(response.error_description || response.error || "Google не выдал доступ")), error_callback: () => reject(new Error("Подключение Google отменено")) });
     if (!client) { reject(new Error("Google Identity не загрузился")); return; }
-    client.requestAccessToken({ prompt: "consent" });
+    client.requestAccessToken();
   });
 }
