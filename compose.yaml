@@ -1,0 +1,9 @@
+services:
+  demo-slides:
+    build:
+      context: .
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    ports:
+      - "${DEMO_SLIDES_PORT:-3000}:3000"
+    restart: unless-stopped

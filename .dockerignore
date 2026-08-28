@@ -1,0 +1,14 @@
+.git
+.gitignore
+.next
+.vinext
+.wrangler
+.npm-cache
+node_modules
+dist
+coverage
+outputs
+work
+*.log
+.env
+.env.*
