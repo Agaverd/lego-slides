@@ -31,12 +31,37 @@ const deviceAssets: Record<string, Record<string, string>> = {
   "MacBook Air": { Silver: "/device-frames/macbook-air-silver.png" },
 };
 
-function addPageBackground(pptx: PptxGenJS, target: PptxGenJS.Slide, page: Slide) {
+type GradientStop = [number, string];
+
+function linearGradient(context: CanvasRenderingContext2D, width: number, height: number, angle: number, stops: GradientStop[]) {
+  const radians = angle * Math.PI / 180; const dx = Math.sin(radians); const dy = -Math.cos(radians); const half = Math.abs(dx) * width / 2 + Math.abs(dy) * height / 2; const cx = width / 2; const cy = height / 2;
+  const gradient = context.createLinearGradient(cx - dx * half, cy - dy * half, cx + dx * half, cy + dy * half); stops.forEach(([offset, color]) => gradient.addColorStop(offset, color)); context.fillStyle = gradient; context.fillRect(0, 0, width, height);
+}
+
+function radialGradient(context: CanvasRenderingContext2D, width: number, height: number, x: number, y: number, stops: GradientStop[]) {
+  const cx = width * x; const cy = height * y; const radius = Math.max(Math.hypot(cx, cy), Math.hypot(width - cx, cy), Math.hypot(cx, height - cy), Math.hypot(width - cx, height - cy));
+  const gradient = context.createRadialGradient(cx, cy, 0, cx, cy, radius); stops.forEach(([offset, color]) => gradient.addColorStop(offset, color)); context.fillStyle = gradient; context.fillRect(0, 0, width, height);
+}
+
+function gradientBackgroundData(preset: string) {
+  const canvas = document.createElement("canvas"); canvas.width = 1600; canvas.height = 900; const context = canvas.getContext("2d"); if (!context) return ""; const { width, height } = canvas;
+  if (preset === "wb-violet") { context.fillStyle = "#F8F9FF"; context.fillRect(0, 0, width, height); radialGradient(context, width, height, .16, .18, [[0, "#D7C9FF"], [.14, "#D7C9FF"], [.38, "rgba(215,201,255,0)"], [1, "rgba(215,201,255,0)"]]); radialGradient(context, width, height, .86, .78, [[0, "#B9ECFF"], [.16, "#B9ECFF"], [.42, "rgba(185,236,255,0)"], [1, "rgba(185,236,255,0)"]]); }
+  else if (preset === "wb-warm") { context.fillStyle = "#FFFDF9"; context.fillRect(0, 0, width, height); radialGradient(context, width, height, .18, .76, [[0, "#FFE4C2"], [.15, "#FFE4C2"], [.42, "rgba(255,228,194,0)"], [1, "rgba(255,228,194,0)"]]); radialGradient(context, width, height, .84, .2, [[0, "#F2D9FF"], [.14, "#F2D9FF"], [.38, "rgba(242,217,255,0)"], [1, "rgba(242,217,255,0)"]]); }
+  else if (preset === "night") { radialGradient(context, width, height, .3, .25, [[0, "#2C405E"], [.48, "#10141D"], [1, "#07090D"]]); }
+  else if (preset === "mesh") { context.fillStyle = "#E7E8FF"; context.fillRect(0, 0, width, height); radialGradient(context, width, height, .18, .22, [[0, "#81D4FA"], [.18, "#81D4FA"], [.42, "rgba(129,212,250,0)"], [1, "rgba(129,212,250,0)"]]); radialGradient(context, width, height, .78, .28, [[0, "#C6FFDD"], [.16, "#C6FFDD"], [.4, "rgba(198,255,221,0)"], [1, "rgba(198,255,221,0)"]]); radialGradient(context, width, height, .52, .82, [[0, "#F8B4D9"], [.2, "#F8B4D9"], [.48, "rgba(248,180,217,0)"], [1, "rgba(248,180,217,0)"]]); }
+  else if (preset === "soft-blue") linearGradient(context, width, height, 135, [[0, "#CFE8FF"], [.52, "#D8F3E7"], [1, "#FBF6DF"]]);
+  else if (preset === "paper") linearGradient(context, width, height, 135, [[0, "#F4F1EA"], [1, "#D7D3CA"]]);
+  else if (preset === "sunset") linearGradient(context, width, height, 145, [[0, "#F6AE72"], [.46, "#D96F82"], [1, "#5F5AA8"]]);
+  else if (preset === "forest") linearGradient(context, width, height, 145, [[0, "#B8D6B0"], [.48, "#4D8065"], [1, "#173E37"]]);
+  else linearGradient(context, width, height, 118, [[0, "#BCEBFF"], [.32, "#DFF5FF"], [.72, "#F7FBFF"], [1, "#FFFFFF"]]);
+  return canvas.toDataURL("image/png");
+}
+
+async function addPageBackground(target: PptxGenJS.Slide, page: Slide) {
   if (page.backgroundMode === "None") { target.background = { color: "FFFFFF", transparency: 100 }; return; }
   if ((page.backgroundStyle ?? "Solid") === "Solid") { target.background = { color: hex(page.background) }; return; }
-  target.background = { color: "F7FBFF" };
-  target.addShape(pptx.ShapeType.ellipse, { x: -1.2, y: -1.4, w: 6.5, h: 6.5, fill: { color: "BCEBFF", transparency: 16 }, line: { transparency: 100 } });
-  target.addShape(pptx.ShapeType.ellipse, { x: 8.7, y: 3.8, w: 5.8, h: 5.8, fill: { color: "D8CCFF", transparency: 36 }, line: { transparency: 100 } });
+  const uploaded = page.backgroundImage ? await imageData(page.backgroundImage) : ""; const data = uploaded || gradientBackgroundData(page.backgroundPreset ?? "wb-blue");
+  if (data) target.addImage({ data, x: 0, y: 0, w: 13.333, h: 7.5 }); else target.background = { color: "F7FBFF" };
 }
 
 async function addBlock(pptx: PptxGenJS, target: PptxGenJS.Slide, block: Block, settings: PresentationSettings) {
@@ -68,7 +93,7 @@ async function addBlock(pptx: PptxGenJS, target: PptxGenJS.Slide, block: Block, 
 export async function buildPptx(project: Project) {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.author = "Demo Slides"; pptx.company = "WB"; pptx.subject = project.title; pptx.title = project.title; pptx.theme = { headFontFace: "Inter", bodyFontFace: "Inter" };
-  for (const page of project.slides) { const target = pptx.addSlide(); addPageBackground(pptx, target, page); if (page.backgroundMode !== "None" && page.backgroundStyle === "Mesh" && page.backgroundImage) { const data = await imageData(page.backgroundImage); if (data) target.addImage({ data, x: 0, y: 0, w: 13.333, h: 7.5 }); } for (const block of page.blocks) await addBlock(pptx, target, block, project.presentationSettings); }
+  for (const page of project.slides) { const target = pptx.addSlide(); await addPageBackground(target, page); for (const block of page.blocks) await addBlock(pptx, target, block, project.presentationSettings); }
   const output = await pptx.write({ outputType: "blob", compression: true }); return output instanceof Blob ? output : new Blob([output as BlobPart], { type: PPTX_MIME });
 }
 
