@@ -31,7 +31,7 @@ export type PresentationSettings = {
 export const defaultPresentationSettings: PresentationSettings = {
   slideColor: "#FFFFFF",
   padding: { top: 32, right: 32, bottom: 32, left: 32 },
-  grid: { columns: 12, rows: 8, gap: 8, cellRatio: "adaptive" },
+  grid: { columns: 12, rows: 8, gap: 2, cellRatio: "adaptive" },
   blockRadius: 8,
 };
 

@@ -26,10 +26,10 @@
   --ds-text: #f4f4f4;
   --ds-text-secondary: #a2a2a2;
   --ds-muted: #797979;
-  --ds-accent: #f6f6f6;
-  --ds-on-accent: #171717;
-  --ds-accent-soft: #343434;
-  --ds-canvas-accent: #f3ec9b;
+  --ds-accent: #5b4ab4;
+  --ds-on-accent: #ffffff;
+  --ds-accent-soft: #312b52;
+  --ds-canvas-accent: #5b4ab4;
   --ds-danger: #ff5b66;
 
   /* Spacing */

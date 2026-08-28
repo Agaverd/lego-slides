@@ -2,9 +2,11 @@
 
 import { ChangeEvent, CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Button, Icon, NumberInput, TextInput, ThemeProvider, configure } from "@gravity-ui/uikit";
-import { ArrowRotateLeft, ArrowRotateRight, Copy, Eye, EyeSlash, FileArrowDown, Plus, TrashBin } from "@gravity-ui/icons";
-import { Block, BlockType, GridArea, PresentationSettings, Project, Slide, createBlock, createDemoProject, defaultPresentationSettings, normalizeProject, presets } from "../domain";
+import { ArrowRotateLeft, ArrowRotateRight, ChevronDown, Copy, Eye, EyeSlash, FileArrowDown, Plus, TrashBin } from "@gravity-ui/icons";
+import { Block, BlockType, GridArea, PresentationSettings, Project, Slide, createBlock, createDemoProject, defaultPresentationSettings, presets } from "../domain";
 import { LocalProjectRepository } from "../repository";
+import { requestGoogleDriveToken } from "../export/google";
+import { downloadPptx, uploadToGoogleSlides } from "../export/pptx";
 
 const repo = new LocalProjectRepository();
 configure({ lang: "ru" });
@@ -35,11 +37,6 @@ function findBestSpace(blocks: Block[], width: number, height: number, columns: 
     if (area) return area;
   }
   return null;
-}
-
-function downloadJson(value: unknown, filename: string) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }));
-  const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url);
 }
 
 function BlockContent({ block, editing, onContent }: { block: Block; editing: boolean; onContent: (content: Record<string, unknown>) => void }) {
@@ -121,7 +118,7 @@ function Mockup({ block }: { block: Block }) {
   const frameSrc = (frame.colors as Record<string, string>)[color]; const screenStyle = frame.screen;
   const backgroundMode = String(c.backgroundMode ?? "Image"); const backgroundStyle = String(c.backgroundStyle ?? "Mesh"); const preset = String(c.backgroundPreset ?? "mesh"); const backgroundImage = String(c.backgroundImage ?? "");
   const stageStyle: CSSProperties = backgroundMode === "None" ? { background: "transparent" } : backgroundStyle === "Solid" ? { background: String(c.background ?? "#1C1C1C") } : backgroundImage ? { backgroundImage: `url(${JSON.stringify(backgroundImage)})`, backgroundPosition: "center", backgroundSize: "cover" } : { background: backgroundPresets[preset] ?? backgroundPresets.mesh };
-  return <div className="mockup-device-stage" style={stageStyle}>
+  return <div className={`mockup-device-stage ${backgroundMode === "None" ? "is-transparent" : ""}`} style={stageStyle}>
     <div className={`device-composite ${model === "MacBook Air" ? "is-laptop" : "is-phone"}`} style={{ transform: `translate(${Number(c.horizontal ?? 0)}px, ${Number(c.vertical ?? 0)}px) scale(${Number(c.scale ?? 90) / 100})` }}>
       {/* eslint-disable-next-line @next/next/no-img-element -- local user image */}
       <div className="device-screen" style={screenStyle}>{src ? <img src={src} alt="Скриншот продукта" style={{ objectFit: c.fit as "cover" | "contain" }} /> : <div className="product-skeleton"><i /><i /><i /><b /></div>}</div>
@@ -168,8 +165,8 @@ const magnetic = (value: number) => {
 };
 
 /* eslint-disable react-hooks/refs -- canvasRef is read only after a pointer or drop event starts, never during render */
-function SlideCanvas({ slide, settings, selectedId, editingId, preview, externalDragType, onSelect, onEdit, onMoveResize, onDuplicateAt, onContent, onDropBlock }: {
-  slide: Slide; settings: PresentationSettings; selectedId: string | null; editingId: string | null; preview: boolean;
+function SlideCanvas({ slide, settings, selectedId, editingId, preview, showGrid = false, externalDragType, onSelect, onEdit, onMoveResize, onDuplicateAt, onContent, onDropBlock }: {
+  slide: Slide; settings: PresentationSettings; selectedId: string | null; editingId: string | null; preview: boolean; showGrid?: boolean;
   externalDragType?: BlockType | null; onSelect: (id: string | null) => void; onEdit: (id: string | null) => void; onMoveResize: (id: string, area: GridArea) => void; onDuplicateAt?: (id: string, area: GridArea) => void; onContent: (id: string, content: Record<string, unknown>) => void; onDropBlock?: (type: BlockType, origin: { x: number; y: number }) => void;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -242,10 +239,10 @@ function SlideCanvas({ slide, settings, selectedId, editingId, preview, external
     if (!onDropBlock || !["text", "metric", "mockup", "image", "table", "chart", "divider"].includes(type)) return;
     e.preventDefault(); const origin = dragOrigin(e); setGuide(null); onDropBlock(type, origin);
   };
-  const metrics = getGridMetrics(settings); const canvasStyle = { ...getSlideStyle(slide, settings), "--grid-columns": settings.grid.columns, "--grid-rows": settings.grid.rows, "--grid-radius": `${Math.max(4, settings.blockRadius)}px` } as unknown as CSSProperties;
+  const metrics = getGridMetrics(settings); const canvasStyle = { ...getSlideStyle(slide, settings), "--grid-columns": settings.grid.columns, "--grid-rows": settings.grid.rows } as unknown as CSSProperties;
   const gridStyle = { left: `${metrics.left / 12}%`, top: `${metrics.top / 6.75}%`, width: `${metrics.gridW / 12}%`, height: `${metrics.gridH / 6.75}%`, columnGap: `${metrics.gap / metrics.gridW * 100}%`, rowGap: `${metrics.gap / metrics.gridH * 100}%` };
   return <div ref={canvasRef} className={`slide-canvas ${preview ? "is-preview" : ""}`} style={canvasStyle} onPointerDown={() => onSelect(null)} onDragOver={(e) => { if (onDropBlock) { e.preventDefault(); if (externalDragType) setGuide({ area: { ...dragOrigin(e), w: 2, h: 2 }, mode: "move" }); } }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setGuide(null); }} onDrop={dropBlock} role="presentation">
-    {!preview && <div className="grid-cells" style={gridStyle}>{Array.from({ length: settings.grid.columns * settings.grid.rows }, (_, index) => <i key={index} />)}</div>}
+    {showGrid && <div className="grid-cells" style={gridStyle}>{Array.from({ length: settings.grid.columns * settings.grid.rows }, (_, index) => <i key={index} />)}</div>}
     {guide && <div className={`interaction-guide guide-${guide.mode} ${guide.copy ? "is-copy" : ""}`} style={getBlockStyle(guide.area, settings)}>{guide.copy && <span>Alt · копия</span>}</div>}
     {slide.blocks.length === 0 && <div className="empty-slide"><strong>Пустой слайд</strong><span>Добавьте первый блок</span></div>}
     {slide.blocks.map((block) => <div key={block.id} className={`slide-block block-${block.type} ${selectedId === block.id ? "is-selected" : ""} ${interaction?.id === block.id ? "is-interacting" : ""} ${yieldingIds.includes(block.id) ? "is-yielding" : ""}`} style={getBlockStyle(interaction?.id === block.id ? interaction.area : block.grid, settings)} onPointerDown={(e) => startPointer(e, block, "move")} onDoubleClick={(e) => { e.stopPropagation(); onSelect(block.id); if (block.type === "text" || block.type === "table") onEdit(block.id); }}>
@@ -280,10 +277,11 @@ function BlockDock({ onAdd, onDragType }: { onAdd: (type: BlockType) => void; on
 export function DemoSlidesEditor() {
   const [project, setProject] = useState<Project>(() => createDemoProject());
   const [currentId, setCurrentId] = useState(""); const [selectedId, setSelectedId] = useState<string | null>(null); const [editingId, setEditingId] = useState<string | null>(null);
-  const [preview, setPreview] = useState(false); const [presetOpen, setPresetOpen] = useState(false); const [notice, setNotice] = useState(""); const [ready, setReady] = useState(false);
+  const [gridVisible, setGridVisible] = useState(true); const [presetOpen, setPresetOpen] = useState(false); const [notice, setNotice] = useState(""); const [ready, setReady] = useState(false);
   const [past, setPast] = useState<Project[]>([]); const [future, setFuture] = useState<Project[]>([]); const [dragSlideId, setDragSlideId] = useState<string | null>(null); const [dockDragType, setDockDragType] = useState<BlockType | null>(null);
+  const [exportOpen, setExportOpen] = useState(false); const [exportBusy, setExportBusy] = useState(false); const [googleSlidesUrl, setGoogleSlidesUrl] = useState("");
 
-  useEffect(() => { repo.getProject("current").then((saved) => { const fallback = createDemoProject(); const p = saved ? { ...saved, presentationSettings: { ...defaultPresentationSettings, ...saved.presentationSettings, padding: { ...defaultPresentationSettings.padding, ...saved.presentationSettings?.padding }, grid: { ...defaultPresentationSettings.grid, ...saved.presentationSettings?.grid } } } : fallback; setProject(p); setCurrentId(p.slides[0]?.id ?? ""); setReady(true); }); }, []);
+  useEffect(() => { repo.getProject("current").then((saved) => { const fallback = createDemoProject(); const savedGrid = saved?.presentationSettings?.grid; const p = saved ? { ...saved, presentationSettings: { ...defaultPresentationSettings, ...saved.presentationSettings, padding: { ...defaultPresentationSettings.padding, ...saved.presentationSettings?.padding }, grid: { ...defaultPresentationSettings.grid, ...savedGrid, gap: savedGrid?.gap === 8 ? 2 : savedGrid?.gap ?? 2 } } } : fallback; setProject(p); setCurrentId(p.slides[0]?.id ?? ""); setReady(true); }); }, []);
   useEffect(() => { if (!ready) return; const timer = setTimeout(() => repo.saveProject({ ...project, updatedAt: new Date().toISOString() }).then(() => setNotice("Сохранено")).catch(() => setNotice("Не удалось сохранить: хранилище браузера заполнено")), 350); return () => clearTimeout(timer); }, [project, ready]);
   useEffect(() => { if (notice) { const t = setTimeout(() => setNotice(""), 1400); return () => clearTimeout(t); } }, [notice]);
 
@@ -301,7 +299,7 @@ export function DemoSlidesEditor() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const input = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target instanceof HTMLElement && e.target.isContentEditable);
-      if (e.key === "Escape") { setEditingId(null); setSelectedId(null); setPresetOpen(false); }
+      if (e.key === "Escape") { setEditingId(null); setSelectedId(null); setPresetOpen(false); setExportOpen(false); }
       if (input) return;
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId) { e.preventDefault(); removeSelected(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
@@ -319,15 +317,16 @@ export function DemoSlidesEditor() {
   const deleteSlide = (id: string) => { if (project.slides.length === 1) { setNotice("В презентации должен остаться один слайд"); return; } const left = project.slides.filter((s) => s.id !== id); commit({ ...project, slides: left.map((s, i) => ({ ...s, order: i })) }); if (currentId === id) setCurrentId(left[0].id); };
   const reorder = (targetId: string) => { if (!dragSlideId || dragSlideId === targetId) return; const list = [...project.slides]; const from = list.findIndex((s) => s.id === dragSlideId); const to = list.findIndex((s) => s.id === targetId); const [moved] = list.splice(from, 1); list.splice(to, 0, moved); commit({ ...project, slides: list.map((s, i) => ({ ...s, order: i })) }); setDragSlideId(null); };
   const upload = (e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => patchSelectedContent({ src: String(reader.result) }); reader.readAsDataURL(file); };
-  const exportPresentation = () => { downloadJson(normalizeProject(project), `${project.title.toLowerCase().replaceAll(" ", "-")}.presentation.json`); setNotice("Структура презентации экспортирована"); };
+  const exportPowerPoint = async () => { setExportBusy(true); setExportOpen(false); try { await downloadPptx(project); setNotice("PPTX готов"); } catch { setNotice("Не удалось создать PPTX"); } finally { setExportBusy(false); } };
+  const exportGoogleSlides = async () => { const clientId = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_GOOGLE_CLIENT_ID; if (!clientId) { setNotice("Добавьте VITE_GOOGLE_CLIENT_ID для Google Slides"); return; } setExportBusy(true); setGoogleSlidesUrl(""); try { const token = await requestGoogleDriveToken(clientId); const result = await uploadToGoogleSlides(project, token); const url = result.webViewLink || `https://docs.google.com/presentation/d/${result.id}/edit`; setGoogleSlidesUrl(url); setExportOpen(true); setNotice("Презентация создана в Google Slides"); } catch (error) { setNotice(error instanceof Error ? error.message : "Экспорт Google Slides не выполнен"); } finally { setExportBusy(false); } };
   const updatePresentationSettings = (settings: PresentationSettings) => commit((p) => ({ ...p, presentationSettings: settings }));
 
   if (!ready || !current) return <div className="app-loading"><span />Загружаем презентацию…</div>;
   return <ThemeProvider theme="dark"><main className="editor-shell">
-    <header className="topbar"><div className="brand"><span className="brand-mark">D</span><TextInput aria-label="Название проекта" value={project.title} onUpdate={(title) => commit({ ...project, title })} size="m" /></div><div className="save-state">{notice || "Автосохранение включено"}</div><div className="top-actions"><Button view="flat" onClick={undo} disabled={!past.length} aria-label="Отменить"><Icon data={ArrowRotateLeft} size={16} /></Button><Button view="flat" onClick={redo} disabled={!future.length} aria-label="Повторить"><Icon data={ArrowRotateRight} size={16} /></Button><Button view="action" onClick={exportPresentation}><Icon data={FileArrowDown} size={16} />Экспорт</Button></div></header>
+    <header className="topbar"><div className="brand"><span className="brand-mark">D</span><TextInput aria-label="Название проекта" value={project.title} onUpdate={(title) => commit({ ...project, title })} size="m" /></div><div className="save-state">{notice || "Автосохранение включено"}</div><div className="top-actions"><Button view="flat" onClick={undo} disabled={!past.length} aria-label="Отменить"><Icon data={ArrowRotateLeft} size={16} /></Button><Button view="flat" onClick={redo} disabled={!future.length} aria-label="Повторить"><Icon data={ArrowRotateRight} size={16} /></Button><div className="export-control"><Button className="export-button" view="action" loading={exportBusy} onClick={() => setExportOpen((open) => !open)}><Icon data={FileArrowDown} size={16} />Экспорт<Icon data={ChevronDown} size={13} /></Button>{exportOpen && <div className="export-popover"><button type="button" onClick={exportPowerPoint}><span>P</span><div><strong>PowerPoint</strong><small>Скачать файл .pptx</small></div></button><button type="button" onClick={exportGoogleSlides}><span>G</span><div><strong>Google Slides</strong><small>Подключить Google и создать копию</small></div></button>{googleSlidesUrl && <a href={googleSlidesUrl} target="_blank" rel="noreferrer">Открыть созданную презентацию ↗</a>}</div>}</div></div></header>
     <div className="workspace">
       <aside className="slides-panel"><div className="panel-title"><span>Слайды</span><small>{project.slides.length}</small></div><div className="slide-list">{project.slides.map((s, i) => <div key={s.id} className={`thumbnail-row ${s.id === current.id ? "active" : ""}`} draggable tabIndex={0} role="button" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { setCurrentId(s.id); setSelectedId(null); } }} onDragStart={() => setDragSlideId(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => reorder(s.id)} onClick={() => { setCurrentId(s.id); setSelectedId(null); }}><span className="slide-number">{String(i + 1).padStart(2, "0")}</span><SlideThumbnail slide={s} settings={project.presentationSettings} /><div className="thumb-actions"><Button view="flat" onClick={(e) => { e.stopPropagation(); duplicateSlide(s.id); }} title="Дублировать"><Icon data={Copy} size={14} /></Button><Button view="flat-danger" onClick={(e) => { e.stopPropagation(); deleteSlide(s.id); }} title="Удалить"><Icon data={TrashBin} size={14} /></Button></div></div>)}</div><div className="add-wrap"><Button view="outlined-action" width="max" onClick={() => setPresetOpen(!presetOpen)}><Icon data={Plus} size={16} />Добавить слайд</Button>{presetOpen && <div className="popover presets"><strong>Выберите раскладку</strong>{Object.keys(presets).map((p) => <button key={p} onClick={() => addSlide(p as keyof typeof presets)}><span className="preset-icon" />{p}</button>)}</div>}</div></aside>
-      <section className="canvas-area"><div className="canvas-toolbar"><span>Слайд {current.order + 1}</span><span>16:9 · {project.presentationSettings.grid.columns} × {project.presentationSettings.grid.rows}</span></div><Button className="viewfinder-preview-toggle" view="flat" size="l" selected={preview} aria-label={preview ? "Вернуться в редактор" : "Показать превью"} title={preview ? "Вернуться в редактор" : "Показать превью"} onClick={() => { setPreview((value) => !value); setSelectedId(null); setEditingId(null); }}><Icon data={preview ? EyeSlash : Eye} size={22} /></Button><div className="canvas-stage"><SlideCanvas slide={current} settings={project.presentationSettings} selectedId={selectedId} editingId={editingId} preview={preview} externalDragType={dockDragType} onSelect={(id) => { setSelectedId(id); if (!id) setEditingId(null); }} onEdit={setEditingId} onMoveResize={(id, area) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, grid: area } : b) }))} onDuplicateAt={duplicateBlockAt} onContent={(id, content) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, content } : b) }))} onDropBlock={addBlock} /></div>{!preview && <div className="canvas-actions"><BlockDock onAdd={addBlock} onDragType={setDockDragType} /></div>}</section>
+      <section className="canvas-area"><div className="canvas-toolbar"><span>Слайд {current.order + 1}</span><span>16:9 · {project.presentationSettings.grid.columns} × {project.presentationSettings.grid.rows}</span></div><Button className="viewfinder-preview-toggle" view="flat" size="l" selected={gridVisible} aria-label={gridVisible ? "Скрыть сетку" : "Показать сетку"} title={gridVisible ? "Скрыть сетку" : "Показать сетку"} onClick={() => setGridVisible((visible) => !visible)}><Icon data={gridVisible ? Eye : EyeSlash} size={22} /></Button><div className="canvas-stage"><SlideCanvas slide={current} settings={project.presentationSettings} selectedId={selectedId} editingId={editingId} preview={false} showGrid={gridVisible} externalDragType={dockDragType} onSelect={(id) => { setSelectedId(id); if (!id) setEditingId(null); }} onEdit={setEditingId} onMoveResize={(id, area) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, grid: area } : b) }))} onDuplicateAt={duplicateBlockAt} onContent={(id, content) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, content } : b) }))} onDropBlock={addBlock} /></div><div className="canvas-actions"><BlockDock onAdd={addBlock} onDragType={setDockDragType} /></div></section>
       <aside className="inspector"><div className="context-title"><span>{selected ? blockLabels[selected.type].label : "Страница"}</span>{selected && <small>{selected.type}</small>}</div>{selected ? <BlockInspector block={selected} patch={patchSelectedContent} upload={upload} duplicate={duplicateBlock} remove={removeSelected} /> : <PageInspector slide={current} slides={project.slides} settings={project.presentationSettings} updateSlide={(patch) => updateCurrent((slide) => ({ ...slide, ...patch }))} updateSettings={updatePresentationSettings} />}</aside>
     </div>
     <div className="mobile-warning">Редактор презентаций лучше работает на экране шириной от 1280 px.</div>

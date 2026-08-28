@@ -17,6 +17,7 @@
     "@gravity-ui/icons": "^2.21.0",
     "@gravity-ui/uikit": "^7.48.0",
     "drizzle-orm": "0.45.2",
+    "pptxgenjs": "^4.0.1",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
