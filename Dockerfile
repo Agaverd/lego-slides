@@ -2,7 +2,9 @@ FROM node:22-bookworm-slim AS dependencies
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# npm lockfiles generated on Windows can omit Linux-only optional packages.
+# Resolve the lockfile for the target Linux platform during the image build.
+RUN npm install --no-audit --no-fund
 
 FROM node:22-bookworm-slim AS build
 
