@@ -1,5 +1,5 @@
 import type PptxGenJS from "pptxgenjs";
-import type { Block, GridArea, PresentationSettings, Project, Slide } from "../domain";
+import { getMetricVariant, type Block, type GridArea, type PresentationSettings, type Project, type Slide } from "../domain";
 
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const GOOGLE_SLIDES_MIME = "application/vnd.google-apps.presentation";
@@ -58,7 +58,6 @@ function gradientBackgroundData(preset: string) {
 }
 
 async function addPageBackground(target: PptxGenJS.Slide, page: Slide) {
-  if (page.backgroundMode === "None") { target.background = { color: "FFFFFF", transparency: 100 }; return; }
   if ((page.backgroundStyle ?? "Solid") === "Solid") { target.background = { color: hex(page.background) }; return; }
   const uploaded = page.backgroundImage ? await imageData(page.backgroundImage) : ""; const data = uploaded || gradientBackgroundData(page.backgroundPreset ?? "wb-blue");
   if (data) target.addImage({ data, x: 0, y: 0, w: 13.333, h: 7.5 }); else target.background = { color: "F7FBFF" };
@@ -69,12 +68,19 @@ async function addBlock(pptx: PptxGenJS, target: PptxGenJS.Slide, block: Block, 
   if (!(["text", "divider", "mockup"] as Block["type"][]).includes(block.type)) target.addShape(shape, { ...box, fill, line });
   if (block.type === "text") {
     const variant = String(content.variant ?? "body"); const fontSize = variant === "heading" ? Math.max(22, Math.min(40, box.h * 11)) : variant === "subheading" ? 24 : 15;
-    if (variant === "insight") target.addShape(shape, { ...box, fill: { color: "EEF4FD" }, line: { color: "5B4AB4", width: 2 } });
-    target.addText(plainText(content.html ?? content.text), { ...box, margin: 0.16, fontFace: "Inter", fontSize, bold: variant === "heading" || variant === "subheading", color: "1C2228", valign: variant === "heading" ? "middle" : "top", breakLine: false, fit: "shrink" }); return;
+    if (content.backgroundEnabled) target.addShape(shape, { ...box, fill: { color: hex(content.backgroundColor) }, line: { transparency: 100 } });
+    else if (variant === "insight") target.addShape(shape, { ...box, fill: { color: "EEF4FD" }, line: { color: "5B4AB4", width: 2 } });
+    target.addText(plainText(content.html ?? content.text), { ...box, margin: 0.16, fontFace: String(content.fontFamily ?? "Inter"), fontSize, bold: variant === "heading" || variant === "subheading", color: hex(content.textColor, "000000"), valign: variant === "heading" ? "middle" : "top", breakLine: false, fit: "shrink" }); return;
   }
   if (block.type === "metric") {
-    target.addText(String(content.value ?? ""), { x: box.x + .18, y: box.y + .18, w: box.w - .36, h: Math.max(.36, box.h * .48), margin: 0, fontFace: "Inter", fontSize: Math.max(20, Math.min(36, box.h * 13)), bold: true, color: "5B4AB4", fit: "shrink" });
-    target.addText(`${plainText(content.label)}\n${plainText(content.comparison)}`, { x: box.x + .18, y: box.y + box.h * .54, w: box.w - .36, h: box.h * .36, margin: 0, fontFace: "Inter", fontSize: 11, bold: true, color: "1C2228", fit: "shrink" }); return;
+    const metricVariant = getMetricVariant(block.grid); const compact = block.grid.w <= 2 || block.grid.h <= 2; const padding = compact ? .08 : .18; const metricFontSize = compact ? Math.max(12, Math.min(22, box.h * 10)) : Math.max(20, Math.min(36, box.h * 13));
+    if (metricVariant === "square") { target.addText(String(content.value ?? ""), { x: box.x + padding, y: box.y + padding, w: box.w - padding * 2, h: box.h - padding * 2, margin: 0, align: "center", valign: "middle", fontFace: "Inter", fontSize: metricFontSize, bold: true, color: "5B4AB4", fit: "shrink" }); return; }
+    if (metricVariant === "horizontal") {
+      target.addText(String(content.value ?? ""), { x: box.x + padding, y: box.y + padding, w: box.w * .54, h: box.h - padding * 2, margin: 0, valign: "middle", fontFace: "Inter", fontSize: metricFontSize, bold: true, color: "5B4AB4", fit: "shrink" });
+      target.addText(plainText(content.label), { x: box.x + box.w * .56, y: box.y + padding, w: box.w * .4 - padding, h: box.h - padding * 2, margin: 0, valign: "middle", fontFace: "Inter", fontSize: compact ? 9 : 13, bold: true, color: "1C2228", fit: "shrink" }); return;
+    }
+    target.addText(String(content.value ?? ""), { x: box.x + padding, y: box.y + box.h * .18, w: box.w - padding * 2, h: box.h * .38, margin: 0, align: "center", valign: "middle", fontFace: "Inter", fontSize: metricFontSize, bold: true, color: "5B4AB4", fit: "shrink" });
+    target.addText(plainText(content.label), { x: box.x + padding, y: box.y + box.h * .56, w: box.w - padding * 2, h: box.h * .24, margin: 0, align: "center", valign: "top", fontFace: "Inter", fontSize: compact ? 9 : 12, bold: true, color: "1C2228", fit: "shrink" }); return;
   }
   if (block.type === "image") { const data = await imageData(content.src); if (data) target.addImage({ data, ...box }); else target.addText("Изображение", { ...box, margin: 0, align: "center", valign: "middle", color: "7B828A", fontSize: 13 }); return; }
   if (block.type === "mockup") {
@@ -93,7 +99,7 @@ async function addBlock(pptx: PptxGenJS, target: PptxGenJS.Slide, block: Block, 
 export async function buildPptx(project: Project) {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.author = "Demo Slides"; pptx.company = "WB"; pptx.subject = project.title; pptx.title = project.title; pptx.theme = { headFontFace: "Inter", bodyFontFace: "Inter" };
-  for (const page of project.slides) { const target = pptx.addSlide(); await addPageBackground(target, page); for (const block of page.blocks) await addBlock(pptx, target, block, project.presentationSettings); }
+  for (const page of project.slides) { const target = pptx.addSlide(); await addPageBackground(target, page); for (const block of page.blocks) await addBlock(pptx, target, block, project.presentationSettings); if (project.presentationSettings.showSlideNumbers) target.addText(String(page.order + 1).padStart(2, "0"), { x: 12.65, y: 7.05, w: .42, h: .2, margin: 0, align: "right", fontFace: "Inter", fontSize: 9, bold: true, color: "6F7882" }); }
   const output = await pptx.write({ outputType: "blob", compression: true }); return output instanceof Blob ? output : new Blob([output as BlobPart], { type: PPTX_MIME });
 }
 

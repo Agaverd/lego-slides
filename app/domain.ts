@@ -1,5 +1,12 @@
 export type BlockType = "text" | "metric" | "image" | "mockup" | "table" | "chart" | "divider";
 export type GridArea = { x: number; y: number; w: number; h: number };
+export type MetricVariant = "square" | "horizontal" | "vertical";
+
+export function getMetricVariant(area: GridArea): MetricVariant {
+  if (area.w === area.h) return "square";
+  if (area.w > area.h) return "horizontal";
+  return "vertical";
+}
 
 export type Block = {
   id: string;
@@ -23,6 +30,7 @@ export type Slide = {
 
 export type PresentationSettings = {
   slideColor: string;
+  showSlideNumbers: boolean;
   padding: { top: number; right: number; bottom: number; left: number };
   grid: { columns: number; rows: number; gap: number; cellRatio: "adaptive" | "square" };
   blockRadius: number;
@@ -30,6 +38,7 @@ export type PresentationSettings = {
 
 export const defaultPresentationSettings: PresentationSettings = {
   slideColor: "#FFFFFF",
+  showSlideNumbers: true,
   padding: { top: 32, right: 32, bottom: 32, left: 32 },
   grid: { columns: 12, rows: 8, gap: 2, cellRatio: "adaptive" },
   blockRadius: 8,
@@ -57,10 +66,10 @@ const id = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.rand
 
 export function createBlock(type: BlockType, grid?: GridArea): Block {
   const content: Record<BlockType, Record<string, unknown>> = {
-    text: { variant: "body", text: "Новый текстовый блок" },
+    text: { variant: "body", text: "Новый текстовый блок", fontFamily: "Inter", textColor: "#000000", backgroundEnabled: false, backgroundColor: "#FFFFFF" },
     metric: { value: "+0.7%", label: "GMV", comparison: "vs control +0.2%", detail: "Рост после запуска нового ранжирования" },
     image: { src: "", fit: "cover", align: "center", alt: "Изображение" },
-    mockup: { deviceModel: "iPhone 17", deviceColor: "Black", src: "", fit: "cover", scale: 90, horizontal: 0, vertical: 0, backgroundMode: "Image", backgroundStyle: "Mesh", backgroundPreset: "mesh", background: "#EEF0F3" },
+    mockup: { deviceModel: "iPhone 17", deviceColor: "Black", src: "", fit: "cover", scale: 90, horizontal: 0, vertical: 0, backgroundMode: "Image", backgroundStyle: "Solid", backgroundPreset: "mesh", background: "#FFFFFF" },
     table: { rows: [["Сегмент", "Значение"], ["Control", "12.4"], ["Test", "13.1"]] },
     chart: { chartType: "Bar", points: [{ label: "A", value: 10 }, { label: "B", value: 14 }, { label: "C", value: 11 }] },
     divider: { variant: "label", label: "Результаты эксперимента" },
@@ -92,6 +101,15 @@ export function createDemoProject(): Project {
         { ...createBlock("text", { x: 8, y: 0, w: 4, h: 8 }), content: { variant: "insight", text: "Рост ускоряется после первой недели и остаётся стабильным к концу эксперимента." } },
       ]),
     ],
+  };
+}
+
+export function createBlankProject(): Project {
+  const now = new Date().toISOString();
+  return {
+    id: id(), title: "Новая презентация", createdAt: now, updatedAt: now, themeId: "demo-default",
+    presentationSettings: structuredClone(defaultPresentationSettings),
+    slides: [slide(0, "Слайд 1", [])],
   };
 }
 
