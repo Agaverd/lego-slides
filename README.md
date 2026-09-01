@@ -1,100 +1,208 @@
-# vinext-starter
+# Lego Slides
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Веб-редактор презентаций с блочным холстом и сеткой. Слайды собираются из текста, метрик, изображений, мокапов устройств, таблиц, графиков и разделителей, а готовую презентацию можно экспортировать в PowerPoint или Google Slides.
 
-## Prerequisites
+## Возможности
 
-- Node.js `>=22.13.0`
+- создание и удаление слайдов;
+- миниатюры слайдов в левой панели;
+- блочная сетка с настраиваемыми колонками, строками, отступами и фоном;
+- перетаскивание блоков из нижнего Dock на холст;
+- перемещение и изменение размера блоков с привязкой к сетке;
+- дублирование выбранного блока через `Ctrl+D`;
+- копирование блока во время перетаскивания с зажатой клавишей `Alt`;
+- WYSIWYG-редактирование текстового блока по двойному клику;
+- отдельные настройки страницы и выбранного объекта;
+- мокапы iPhone, Android и MacBook с настройкой модели, цвета, масштаба и смещения;
+- фоны `None`, `Solid` и `Mesh`, включая собственные изображения;
+- включение и отключение отображения сетки;
+- экспорт в `.pptx`;
+- экспорт в Google Slides через Google OAuth;
+- растровый экспорт градиентных фонов в PNG для корректного отображения в Google Slides;
+- автоматическое сохранение проекта в браузере.
 
-## Quick Start
+## Технологии
+
+- React 19 и TypeScript;
+- Vinext и Vite;
+- Gravity UI и Gravity UI Icons;
+- PptxGenJS для PowerPoint;
+- Google Identity Services и Google Drive API для Google Slides;
+- Cloudflare Workers-совместимая серверная сборка;
+- Docker и Docker Compose.
+
+## Структура проекта
+
+```text
+lego-slides/
+├── app/
+│   ├── components/
+│   │   └── DemoSlidesEditor.tsx   # основной интерфейс редактора
+│   ├── export/
+│   │   ├── google.ts              # получение Google OAuth-токена
+│   │   └── pptx.ts                # генерация PPTX и загрузка в Google Drive
+│   ├── privacy/
+│   │   └── page.tsx               # политика конфиденциальности Google OAuth
+│   ├── design-system.css           # стили элементов управления
+│   ├── domain.ts                   # типы презентации, слайдов и блоков
+│   ├── globals.css                 # глобальные стили редактора
+│   ├── layout.tsx                  # корневой layout
+│   ├── page.tsx                    # главная страница
+│   └── repository.ts               # сохранение и загрузка проекта
+├── public/
+│   └── device-frames/              # изображения рамок устройств
+├── worker/
+│   └── index.ts                    # Cloudflare Worker entry point
+├── tests/                          # автоматические проверки
+├── Dockerfile                      # сборка production-образа
+├── compose.yaml                    # запуск через Docker Compose
+├── .env.example                    # пример локальных переменных
+├── .env.docker.example             # пример переменных для Docker
+└── DOCKER.md                       # расширенная инструкция по Docker
+```
+
+## Локальный запуск
+
+### Требования
+
+- Node.js `22.13` или новее;
+- npm.
+
+Клонируйте репозиторий и перейдите в его директорию:
+
+```bash
+git clone https://github.com/Agaverd/lego-slides.git
+cd lego-slides
+```
+
+Установите зависимости:
 
 ```bash
 npm install
+```
+
+Создайте локальный файл окружения:
+
+```bash
+cp .env.example .env.local
+```
+
+В Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env.local
+```
+
+Запустите dev-сервер:
+
+```bash
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+Откройте [http://localhost:3000](http://localhost:3000).
 
-## Included Shape
+## Запуск в Docker Compose
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+Создайте `.env` из примера:
 
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+cp .env.docker.example .env
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+Соберите и запустите контейнер:
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+```bash
+docker compose up -d --build
+```
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+Приложение будет доступно на [http://localhost:3000](http://localhost:3000).
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+Посмотреть состояние и логи:
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+```bash
+docker compose ps
+docker compose logs -f
+```
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+Остановить контейнеры:
 
-## Useful Commands
+```bash
+docker compose down
+```
 
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+Публичный порт можно изменить в `.env`:
 
-## Learn More
+```dotenv
+DEMO_SLIDES_PORT=3001
+```
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+После следующего запуска приложение будет доступно на `http://localhost:3001`.
+
+## Сборка и запуск Docker-образа вручную
+
+Находясь в корне репозитория, выполните:
+
+```bash
+docker build -t lego-slides:local .
+docker run -d --name lego-slides --restart unless-stopped -p 3001:3000 lego-slides:local
+```
+
+Обратите внимание: `3001` — порт компьютера или VPS, а `3000` — порт приложения внутри контейнера.
+
+Проверить контейнер:
+
+```bash
+docker ps
+docker logs -f lego-slides
+curl http://localhost:3001
+```
+
+## Google Slides
+
+Экспорт в PowerPoint работает без дополнительных настроек. Для экспорта в Google Slides нужен OAuth Client ID типа `Web application`.
+
+Укажите его в `.env.local` для локального запуска:
+
+```dotenv
+VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+```
+
+Для Docker добавьте его в `.env` до сборки:
+
+```dotenv
+VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+```
+
+В Google Cloud Console необходимо:
+
+1. включить Google Drive API;
+2. создать OAuth Client ID типа `Web application`;
+3. добавить адрес приложения в `Authorized JavaScript origins`, например `http://localhost:3000` для локальной разработки и `https://slides.example.com` для сервера.
+
+Значение `VITE_GOOGLE_CLIENT_ID` встраивается во время сборки. После его изменения Docker-образ нужно пересобрать:
+
+```bash
+docker compose up -d --build
+```
+
+Для публичного сервера рекомендуется использовать домен, reverse proxy и HTTPS. Авторизация Google через обычный HTTP-адрес VPS может не работать.
+
+## Команды проекта
+
+```bash
+npm run dev          # локальный сервер разработки
+npm run build        # production-сборка
+npm start            # запуск готовой production-сборки
+npm run lint         # проверка ESLint
+npx tsc --noEmit     # проверка TypeScript
+npm test             # сборка и автоматические тесты
+```
+
+## Данные и безопасность
+
+- проект презентации сохраняется локально в браузере;
+- Google OAuth-токен используется только для экспорта и не сохраняется на сервере;
+- файлы `.env` и `.env.local` исключены из Git;
+- авторизация через ChatGPT в проекте не используется.
+
+Дополнительная инструкция по серверному запуску находится в [DOCKER.md](./DOCKER.md).
