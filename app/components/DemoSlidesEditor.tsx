@@ -318,7 +318,7 @@ function PresentationGallery({ projects, onOpen, onCreate }: { projects: Project
         <div className="project-card-preview">{item.slides[0] ? <SlideThumbnail slide={item.slides[0]} settings={item.presentationSettings} /> : <span>Пустая презентация</span>}<i>Открыть</i></div>
         <div className="project-card-copy"><strong>{item.title || "Без названия"}</strong><span>{item.slides.length} {item.slides.length === 1 ? "слайд" : "слайдов"}</span><time dateTime={item.updatedAt}>Изменено {new Date(item.updatedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}</time></div>
       </button>)}</div>
-      {!projects.length && <div className="gallery-empty"><span>＋</span><h2>Создайте первую презентацию</h2><p>Она появится здесь и будет доступна при следующем открытии редактора.</p><Button view="action" onClick={onCreate}>Создать презентацию</Button></div>}
+      {!projects.length && <div className="gallery-empty"><span>＋</span><h2>Создайте первую презентацию</h2><p>Она появится здесь и будет доступна при следующем открытии редактора.</p><Button className="gallery-create-button" view="action" onClick={onCreate}>Создать презентацию</Button></div>}
     </section>
   </main></ThemeProvider>;
 }

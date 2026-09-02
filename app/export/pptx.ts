@@ -8,6 +8,35 @@ const hex = (value: unknown, fallback = "FFFFFF") => { const match = String(valu
 const plainText = (value: unknown) => String(value ?? "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "").trim();
 const safeName = (value: string) => value.trim().replace(/[\\/:*?"<>|]+/g, "-") || "Presentation";
 
+type TextVariant = "heading" | "subheading" | "body" | "insight";
+
+const textStyles: Record<TextVariant, { fontSize: number; bold: boolean; valign: "top" | "middle" }> = {
+  // CSS pixels on the 1200 × 675 design canvas converted to PowerPoint points.
+  heading: { fontSize: 39, bold: true, valign: "middle" },
+  subheading: { fontSize: 24, bold: true, valign: "top" },
+  body: { fontSize: 13.5, bold: false, valign: "top" },
+  insight: { fontSize: 15, bold: true, valign: "top" },
+};
+
+function textVariant(value: unknown): TextVariant {
+  const variant = String(value ?? "body");
+  return variant === "heading" || variant === "subheading" || variant === "insight" ? variant : "body";
+}
+
+function richTextAlign(value: unknown): "left" | "center" | "right" {
+  const html = String(value ?? "");
+  const match = html.match(/text-align\s*:\s*(left|center|right)/i) ?? html.match(/align=["']?(left|center|right)/i);
+  if (match?.[1]) return match[1].toLowerCase() as "left" | "center" | "right";
+  return /<center(?:\s|>)/i.test(html) ? "center" : "left";
+}
+
+function richTextFontSize(value: unknown, fallback: number) {
+  const match = String(value ?? "").match(/font-size\s*:\s*([\d.]+)\s*(px|pt)/i);
+  if (!match) return fallback;
+  const size = Number(match[1]) * (match[2].toLowerCase() === "px" ? .75 : 1);
+  return Number.isFinite(size) ? Math.max(6, Math.min(96, size)) : fallback;
+}
+
 function gridMetrics(settings: PresentationSettings) {
   const { columns, rows, gap } = settings.grid; const availableW = 1200 - settings.padding.left - settings.padding.right; const availableH = 675 - settings.padding.top - settings.padding.bottom;
   const adaptiveW = (availableW - gap * (columns - 1)) / columns; const adaptiveH = (availableH - gap * (rows - 1)) / rows; const cellW = settings.grid.cellRatio === "square" ? Math.min(adaptiveW, adaptiveH) : adaptiveW; const cellH = settings.grid.cellRatio === "square" ? cellW : adaptiveH;
@@ -67,10 +96,12 @@ async function addBlock(pptx: PptxGenJS, target: PptxGenJS.Slide, block: Block, 
   const box = frame(block.grid, settings); const content = block.content; const fill = { color: "F5F7F8" }; const line = { color: "E3E5E8", transparency: 35 }; const shape = settings.blockRadius > 0 ? pptx.ShapeType.roundRect : pptx.ShapeType.rect;
   if (!(["text", "divider", "mockup"] as Block["type"][]).includes(block.type)) target.addShape(shape, { ...box, fill, line });
   if (block.type === "text") {
-    const variant = String(content.variant ?? "body"); const fontSize = variant === "heading" ? Math.max(22, Math.min(40, box.h * 11)) : variant === "subheading" ? 24 : 15;
+    const variant = textVariant(content.variant); const typography = textStyles[variant]; const html = content.html ?? content.text;
+    const fontSize = richTextFontSize(html, typography.fontSize); const inset = Math.min(toInches(28), box.w * .22, box.h * .3);
+    const margin: number | [number, number, number, number] = variant === "insight" ? [box.h * .16, inset, inset, inset] : inset;
     if (content.backgroundEnabled) target.addShape(shape, { ...box, fill: { color: hex(content.backgroundColor) }, line: { transparency: 100 } });
     else if (variant === "insight") target.addShape(shape, { ...box, fill: { color: "EEF4FD" }, line: { color: "5B4AB4", width: 2 } });
-    target.addText(plainText(content.html ?? content.text), { ...box, margin: 0.16, fontFace: String(content.fontFamily ?? "Inter"), fontSize, bold: variant === "heading" || variant === "subheading", color: hex(content.textColor, "000000"), valign: variant === "heading" ? "middle" : "top", breakLine: false, fit: "shrink" }); return;
+    target.addText(plainText(html), { ...box, margin, fontFace: String(content.fontFamily ?? "Inter"), fontSize, bold: typography.bold, color: hex(content.textColor, "000000"), align: richTextAlign(html), valign: typography.valign, breakLine: false, fit: "shrink", ...(variant === "heading" ? { charSpacing: -1.75 } : {}) }); return;
   }
   if (block.type === "metric") {
     const metricVariant = getMetricVariant(block.grid); const compact = block.grid.w <= 2 || block.grid.h <= 2; const padding = compact ? .08 : .18; const metricFontSize = compact ? Math.max(12, Math.min(22, box.h * 10)) : Math.max(20, Math.min(36, box.h * 13));

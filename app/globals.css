@@ -19,7 +19,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .gallery-shell { min-height: 100vh; max-height: 100vh; overflow: auto; background: radial-gradient(circle at 22% 0%, #5b4ab425, transparent 32%), var(--ds-bg); }
 .gallery-topbar { position: sticky; z-index: 5; top: 0; height: 68px; display: flex; align-items: center; justify-content: space-between; padding: 0 34px; border-bottom: 1px solid var(--ds-border); background: #1c1c1ce8; backdrop-filter: blur(16px); }
 .gallery-topbar .brand { min-width: 0; font-size: 15px; }
-.gallery-create-button.g-button { min-height: 42px; border: 1px solid #6b59c7; border-radius: 12px; color: #fff; background: var(--ds-accent); box-shadow: 0 8px 24px #5b4ab43d; }
+.gallery-create-button.g-button { min-height: 42px; border: 1px solid #7f6bfc; border-radius: 12px; color: #fff; background: #7f6bfc; box-shadow: 0 8px 24px #7f6bfc3d; }
+.gallery-create-button.g-button:hover { border-color: #9383ff; color: #fff; background: #8b79ff; }
 .gallery-content { width: min(1240px, calc(100% - 64px)); margin: 0 auto; padding: 72px 0 96px; }
 .gallery-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; margin-bottom: 32px; }
 .gallery-heading > div > span { color: #a99ce9; font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
@@ -69,8 +70,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .thumb-actions .g-button { width: 32px !important; height: 32px !important; display: grid !important; place-items: center !important; padding: 0 !important; border: 1px solid var(--ds-border) !important; border-radius: 10px !important; color: var(--ds-text) !important; background: #202020e8 !important; box-shadow: 0 8px 24px #0008 !important; backdrop-filter: blur(8px); }
 .thumb-actions .g-button:hover { background: var(--ds-control-active) !important; }
 .add-wrap { position: relative; padding: 10px; border-top: 1px solid var(--ds-border); }
-.add-slide-button.g-button { width: 100%; height: 38px; border: 1px solid #6b59c7; border-radius: 11px; color: #fff; background: #5b4ab4; font-weight: 650; box-shadow: 0 6px 18px #5b4ab438; }
-.add-slide-button.g-button:hover { color: #fff; background: #6b59c7; border-color: #7868ce; }
+.add-slide-button.g-button { width: 100%; height: 38px; border: 1px solid #7f6bfc; border-radius: 11px; color: #fff; background: #7f6bfc; font-weight: 650; box-shadow: 0 6px 18px #7f6bfc38; }
+.add-slide-button.g-button:hover { color: #fff; background: #8b79ff; border-color: #9383ff; }
 .canvas-area { min-width: 0; min-height: 0; position: relative; display: grid; grid-template-rows: 36px 1fr; background: var(--ds-canvas); overflow: hidden; }
 .canvas-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 18px; color: var(--ds-muted); font-size: 11px; border-bottom: 1px solid var(--ds-border); }
 .viewfinder-preview-toggle { position: absolute !important; z-index: 20; top: 52px; right: 18px; width: 46px !important; height: 46px !important; display: grid !important; place-items: center !important; padding: 0 !important; border: 1px solid var(--ds-border) !important; border-radius: 12px !important; color: var(--ds-text) !important; background: #202020e8 !important; box-shadow: 0 8px 24px #0008; backdrop-filter: blur(8px); }
@@ -202,8 +203,8 @@ tr:first-child td { color: var(--ds-muted); background: var(--ds-subtle); font-s
 .chart-item span { color: var(--ds-text); font-weight: 700; }
 .popover { position: absolute; z-index: 50; border: 1px solid var(--ds-border); border-radius: var(--ds-radius-lg); background: var(--ds-surface-raised); box-shadow: var(--ds-shadow-lg); padding: 7px; }
 .export-control { position: relative; }
-.editor-shell .export-button.g-button { height: 38px; border: 1px solid #6b59c7; border-radius: 11px; color: #fff; background: #5b4ab4; box-shadow: 0 6px 18px #5b4ab438; }
-.editor-shell .export-button.g-button:hover { color: #fff; background: #6b59c7; border-color: #7868ce; }
+.editor-shell .export-button.g-button { height: 38px; border: 1px solid #7f6bfc; border-radius: 11px; color: #fff; background: #7f6bfc; box-shadow: 0 6px 18px #7f6bfc38; }
+.editor-shell .export-button.g-button:hover { color: #fff; background: #8b79ff; border-color: #9383ff; }
 .export-popover { position: absolute; z-index: 80; top: calc(100% + 8px); right: 0; width: 260px; padding: 7px; border: 1px solid var(--ds-border); border-radius: 13px; background: var(--ds-surface-raised); box-shadow: var(--ds-shadow-lg); }
 .export-popover button { width: 100%; display: grid; grid-template-columns: 34px 1fr; gap: 9px; align-items: center; border: 0; padding: 9px; text-align: left; }
 .export-popover button > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; color: #fff; background: #5b4ab4; font-weight: 800; }
