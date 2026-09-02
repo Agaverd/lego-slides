@@ -159,33 +159,82 @@ curl http://localhost:3001
 
 ## Google Slides
 
-Экспорт в PowerPoint работает без дополнительных настроек. Для экспорта в Google Slides нужен OAuth Client ID типа `Web application`.
+Экспорт в PowerPoint работает без дополнительных настроек. Для экспорта в Google Slides нужен публичный OAuth Client ID типа `Web application`. Client Secret в браузерное приложение добавлять не нужно.
 
-Укажите его в `.env.local` для локального запуска:
+### Как получить Google OAuth Client ID
+
+1. Откройте [Google Cloud Console](https://console.cloud.google.com/) и создайте новый проект либо выберите существующий.
+2. В разделе `APIs & Services → Library` включите [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com). Текущая реализация загружает PPTX через Drive API и конвертирует его в Google Slides.
+3. Откройте `Google Auth Platform → Branding` и заполните название приложения, email поддержки и контактный email.
+4. В разделе `Audience` выберите `External`, если приложением будут пользоваться разные Google-аккаунты. Пока приложение находится в режиме тестирования, добавьте нужные аккаунты в `Test users`.
+5. В разделе `Data Access` добавьте scope:
+
+   ```text
+   https://www.googleapis.com/auth/drive.file
+   ```
+
+6. Откройте `Google Auth Platform → Clients`, нажмите `Create client` и выберите тип `Web application`.
+7. Добавьте точные адреса приложения в `Authorized JavaScript origins`, например:
+
+   ```text
+   http://localhost:3000
+   http://localhost:3001
+   https://slides.example.com
+   ```
+
+   Порт должен совпадать с адресом, по которому пользователь открывает приложение. Wildcard-адреса не поддерживаются. Для production используйте домен с HTTPS: Google не разрешает обычный внешний IP-адрес в качестве JavaScript origin, исключение сделано только для localhost.
+
+8. `Authorized redirect URIs` для используемой popup/token-модели можно оставить пустым.
+9. Нажмите `Create` и скопируйте Client ID вида:
+
+   ```text
+   1234567890-abcdefgh.apps.googleusercontent.com
+   ```
+
+Документация Google: [создание Web Client ID](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid), [OAuth для браузерных приложений](https://developers.google.com/identity/protocols/oauth2/javascript-implicit-flow).
+
+### Локальный запуск без Docker
+
+Создайте в корне репозитория файл `.env.local`:
 
 ```dotenv
-VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+VITE_GOOGLE_CLIENT_ID=1234567890-abcdefgh.apps.googleusercontent.com
 ```
 
-Для Docker добавьте его в `.env` до сборки:
+После изменения `.env.local` полностью перезапустите сервер:
+
+```bash
+npm run dev
+```
+
+### Запуск через Docker Compose
+
+Создайте рядом с `compose.yaml` файл `.env`:
 
 ```dotenv
-VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+VITE_GOOGLE_CLIENT_ID=1234567890-abcdefgh.apps.googleusercontent.com
+DEMO_SLIDES_PORT=3001
 ```
-
-В Google Cloud Console необходимо:
-
-1. включить Google Drive API;
-2. создать OAuth Client ID типа `Web application`;
-3. добавить адрес приложения в `Authorized JavaScript origins`, например `http://localhost:3000` для локальной разработки и `https://slides.example.com` для сервера.
 
 Значение `VITE_GOOGLE_CLIENT_ID` встраивается во время сборки. После его изменения Docker-образ нужно пересобрать:
 
 ```bash
+docker compose down
 docker compose up -d --build
 ```
 
-Для публичного сервера рекомендуется использовать домен, reverse proxy и HTTPS. Авторизация Google через обычный HTTP-адрес VPS может не работать.
+После запуска приложение будет доступно на `http://localhost:3001`.
+
+### Ручная сборка Docker-образа
+
+Если Docker Compose не используется, передайте Client ID как build argument:
+
+```bash
+docker build --build-arg VITE_GOOGLE_CLIENT_ID="1234567890-abcdefgh.apps.googleusercontent.com" -t lego-slides:local .
+docker run -d --name lego-slides -p 3001:3000 lego-slides:local
+```
+
+Для VPS привяжите домен, настройте reverse proxy и HTTPS, добавьте итоговый адрес вида `https://slides.example.com` в `Authorized JavaScript origins`, а затем пересоберите образ. Одного добавления переменной окружения уже запущенному контейнеру недостаточно.
 
 ## Команды проекта
 
