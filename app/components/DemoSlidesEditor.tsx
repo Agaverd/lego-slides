@@ -78,13 +78,24 @@ function BlockContent({ block, editing, onContent }: { block: Block; editing: bo
   if (block.type === "divider") return String(c.variant) === "line" ? <div className="divider-line" /> : <div className="divider-label">{String(c.label)}</div>;
   if (block.type === "image") return c.src ? <img className="block-image" src={String(c.src)} alt={String(c.alt ?? "")} style={{ objectFit: c.fit as "cover" | "contain", objectPosition: `center ${String(c.align ?? "center")}` }} /> : <EmptyMedia label="Добавьте изображение" />; // eslint-disable-line @next/next/no-img-element -- local data URLs are user content
   if (block.type === "mockup") return <Mockup block={block} />;
-  if (block.type === "table") {
-    const rows = c.rows as string[][];
-    return <div className="table-wrap"><table><tbody>{rows.map((row, ri) => <tr key={ri}>{row.map((cell, ci) => <td key={ci} contentEditable={editing} suppressContentEditableWarning onBlur={(e) => { const next = clone(rows); next[ri][ci] = e.currentTarget.innerText; onContent({ ...c, rows: next }); }}>{cell}</td>)}</tr>)}</tbody></table></div>;
-  }
+  if (block.type === "table") return <TableBlock block={block} editing={editing} onContent={onContent} />;
   const points = c.points as Array<{ label: string; value: number }>;
   const max = Math.max(...points.map((p) => p.value), 1);
   return <div className={`chart chart-${String(c.chartType).toLowerCase()}`}>{points.map((p) => <div className="chart-item" key={p.label}><span>{p.value}</span><div style={{ height: `${Math.max(8, p.value / max * 72)}%` }} /><small>{p.label}</small></div>)}</div>;
+}
+
+function resizeTable(rows: string[][], rowCount: number, columnCount: number) {
+  return Array.from({ length: rowCount }, (_, rowIndex) => Array.from({ length: columnCount }, (_, columnIndex) => rows[rowIndex]?.[columnIndex] ?? ""));
+}
+
+function TableBlock({ block, editing, onContent }: { block: Block; editing: boolean; onContent: (content: Record<string, unknown>) => void }) {
+  const c = block.content; const rows = (c.rows as string[][]) ?? [[""]];
+  const updateCell = (rowIndex: number, columnIndex: number, value: string) => { const next = clone(rows); next[rowIndex][columnIndex] = value; onContent({ ...c, rows: next }); };
+  const addRow = () => onContent({ ...c, rows: [...rows, Array(rows[0]?.length || 2).fill("")].slice(0, 30) });
+  return <div className={`table-wrap ${editing ? "is-editing" : ""}`}>
+    <table><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, columnIndex) => <td key={columnIndex} contentEditable={editing} suppressContentEditableWarning onBlur={(event) => updateCell(rowIndex, columnIndex, event.currentTarget.innerText)}>{cell}</td>)}</tr>)}</tbody></table>
+    {editing && <button className="table-edge-add-row" type="button" aria-label="Добавить строку" title="Добавить строку" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={addRow}><Icon data={Plus} size={14} /><span>Строка</span></button>}
+  </div>;
 }
 
 function textToHtml(text: string) {
@@ -96,19 +107,29 @@ function RichTextBlock({ block, editing, onContent }: { block: Block; editing: b
   const c = block.content;
   useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
   const fontFamily = String(c.fontFamily ?? "Inter") === "Unbounded" ? '"Unbounded", sans-serif' : 'Inter, Arial, sans-serif';
-  const style = { color: String(c.textColor ?? "#000000"), background: c.backgroundEnabled ? String(c.backgroundColor ?? "#FFFFFF") : undefined, fontFamily };
+  const fontSize = Number(c.fontSize); const style: CSSProperties = { color: String(c.textColor ?? "#000000"), background: c.backgroundEnabled ? String(c.backgroundColor ?? "#FFFFFF") : undefined, fontFamily, ...(Number.isFinite(fontSize) ? { fontSize: `${fontSize}px` } : {}) };
   return <div ref={ref} style={style} className={`text-block text-${String(c.variant)} ${editing ? "is-rich-editing" : ""}`} contentEditable={editing} suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: String(c.html ?? textToHtml(String(c.text))) }} onBlur={(e) => onContent({ ...c, text: e.currentTarget.innerText, html: e.currentTarget.innerHTML })} />;
 }
 
 function RichTextToolbar() {
-  const command = (name: string) => (e: ReactPointerEvent<HTMLButtonElement>) => { e.preventDefault(); e.stopPropagation(); document.execCommand(name); };
-  return <div className="rich-text-toolbar" onPointerDown={(e) => e.stopPropagation()}>
-    <button type="button" aria-label="Полужирный" onPointerDown={command("bold")}><strong>B</strong></button>
-    <button type="button" aria-label="Курсив" onPointerDown={command("italic")}><em>I</em></button>
-    <button type="button" aria-label="По левому краю" onPointerDown={command("justifyLeft")}>≡</button>
-    <button type="button" aria-label="По центру" onPointerDown={command("justifyCenter")}>≣</button>
-    <button type="button" aria-label="По правому краю" onPointerDown={command("justifyRight")}>≡</button>
+  const command = (name: string) => () => document.execCommand(name);
+  return <div className="rich-text-toolbar" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}>
+    <button type="button" aria-label="Полужирный" onClick={command("bold")}><strong>B</strong></button>
+    <button type="button" aria-label="Курсив" onClick={command("italic")}><em>I</em></button>
+    <button type="button" aria-label="Подчёркивание" onClick={command("underline")}><u>U</u></button>
+    <span className="rich-text-divider" />
+    <button type="button" aria-label="Маркированный список" onClick={command("insertUnorderedList")}>•≡</button>
+    <button type="button" aria-label="Нумерованный список" onClick={command("insertOrderedList")}>1≡</button>
+    <span className="rich-text-divider" />
+    <button type="button" aria-label="По левому краю" onClick={command("justifyLeft")}>≡</button>
+    <button type="button" aria-label="По центру" onClick={command("justifyCenter")}>≣</button>
+    <button type="button" aria-label="По правому краю" onClick={command("justifyRight")}>≡</button>
   </div>;
+}
+
+function BrandLogo() {
+  // eslint-disable-next-line @next/next/no-img-element -- bundled brand asset
+  return <img className="brand-logo" src="/logo.png" alt="Lego Slides" />;
 }
 
 function EmptyMedia({ label }: { label: string }) { return <div className="empty-media"><span>▧</span>{label}</div>; }
@@ -312,13 +333,14 @@ function BlockDock({ onAdd, onDragType }: { onAdd: (type: BlockType) => void; on
 
 function PresentationGallery({ projects, onOpen, onCreate }: { projects: Project[]; onOpen: (project: Project) => void; onCreate: () => void }) {
   return <ThemeProvider theme="dark"><main className="gallery-shell">
-    <header className="gallery-topbar"><div className="brand"><span className="brand-mark">D</span><strong>Lego Slides</strong></div><Button className="gallery-create-button" view="action" size="l" onClick={onCreate}><Icon data={Plus} size={18} />Новая презентация</Button></header>
-    <section className="gallery-content"><div className="gallery-heading"><div><span>Ваши работы</span><h1>Презентации</h1><p>Возвращайтесь к ранее созданным презентациям — изменения сохраняются автоматически.</p></div><small>{projects.length} {projects.length === 1 ? "проект" : "проектов"}</small></div>
+    <header className="gallery-topbar"><div className="brand"><BrandLogo /><strong>Lego Slides</strong></div></header>
+    <section className="gallery-create-section"><div className="gallery-section-inner"><h1>Создать презентацию</h1><button className="blank-presentation-card" type="button" onClick={onCreate}><span className="blank-presentation-preview"><Icon data={Plus} size={36} /></span><strong>Пустая презентация</strong></button></div></section>
+    <section className="gallery-content"><h2>Недавние презентации</h2>
       <div className="project-gallery">{projects.map((item) => <button type="button" className="project-card" key={item.id} onClick={() => onOpen(item)}>
         <div className="project-card-preview">{item.slides[0] ? <SlideThumbnail slide={item.slides[0]} settings={item.presentationSettings} /> : <span>Пустая презентация</span>}<i>Открыть</i></div>
         <div className="project-card-copy"><strong>{item.title || "Без названия"}</strong><span>{item.slides.length} {item.slides.length === 1 ? "слайд" : "слайдов"}</span><time dateTime={item.updatedAt}>Изменено {new Date(item.updatedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}</time></div>
       </button>)}</div>
-      {!projects.length && <div className="gallery-empty"><span>＋</span><h2>Создайте первую презентацию</h2><p>Она появится здесь и будет доступна при следующем открытии редактора.</p><Button className="gallery-create-button" view="action" onClick={onCreate}>Создать презентацию</Button></div>}
+      {!projects.length && <p className="gallery-empty-note">Здесь появятся созданные презентации.</p>}
     </section>
   </main></ThemeProvider>;
 }
@@ -353,6 +375,7 @@ export function DemoSlidesEditor() {
       if (input) return;
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId) { e.preventDefault(); removeSelected(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") { e.preventDefault(); duplicateBlock(); }
     };
     window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
@@ -378,7 +401,7 @@ export function DemoSlidesEditor() {
   if (view === "gallery") return <PresentationGallery projects={projects} onOpen={openProject} onCreate={createProject} />;
   if (!current) return <div className="app-loading"><span />Загружаем презентацию…</div>;
   return <ThemeProvider theme="dark"><main className="editor-shell">
-    <header className="topbar"><div className="brand"><Button className="projects-back-button" view="flat" onClick={openGallery}>Все презентации</Button><span className="brand-mark">D</span><TextInput aria-label="Название проекта" value={project.title} onUpdate={(title) => commit({ ...project, title })} size="m" /></div><div className="save-state">{notice || "Автосохранение включено"}</div><div className="top-actions"><Button view="flat" onClick={undo} disabled={!past.length} aria-label="Отменить"><Icon data={ArrowRotateLeft} size={16} /></Button><Button view="flat" onClick={redo} disabled={!future.length} aria-label="Повторить"><Icon data={ArrowRotateRight} size={16} /></Button><div className="export-control"><Button className="export-button" view="action" loading={exportBusy} onClick={() => setExportOpen((open) => !open)}><Icon data={FileArrowDown} size={16} />Экспорт<Icon data={ChevronDown} size={13} /></Button>{exportOpen && <div className="export-popover"><button type="button" onClick={exportPowerPoint}><span>P</span><div><strong>PowerPoint</strong><small>Скачать файл .pptx</small></div></button><button type="button" onClick={exportGoogleSlides}><span>G</span><div><strong>Google Slides</strong><small>Подключить Google и создать копию</small></div></button>{googleSlidesUrl && <a href={googleSlidesUrl} target="_blank" rel="noreferrer">Открыть созданную презентацию ↗</a>}</div>}</div></div></header>
+    <header className="topbar"><div className="brand"><Button className="projects-back-button" view="flat" onClick={openGallery}>Все презентации</Button><BrandLogo /><TextInput aria-label="Название проекта" value={project.title} onUpdate={(title) => commit({ ...project, title })} size="m" /></div><div className="save-state">{notice || "Автосохранение включено"}</div><div className="top-actions"><Button view="flat" onClick={undo} disabled={!past.length} aria-label="Отменить"><Icon data={ArrowRotateLeft} size={16} /></Button><Button view="flat" onClick={redo} disabled={!future.length} aria-label="Повторить"><Icon data={ArrowRotateRight} size={16} /></Button><div className="export-control"><Button className="export-button" view="action" loading={exportBusy} onClick={() => setExportOpen((open) => !open)}><Icon data={FileArrowDown} size={16} />Экспорт<Icon data={ChevronDown} size={13} /></Button>{exportOpen && <div className="export-popover"><button type="button" onClick={exportPowerPoint}><span>P</span><div><strong>PowerPoint</strong><small>Скачать файл .pptx</small></div></button><button type="button" onClick={exportGoogleSlides}><span>G</span><div><strong>Google Slides</strong><small>Подключить Google и создать копию</small></div></button>{googleSlidesUrl && <a href={googleSlidesUrl} target="_blank" rel="noreferrer">Открыть созданную презентацию ↗</a>}</div>}</div></div></header>
     <div className="workspace">
       <aside className="slides-panel"><div className="panel-title"><span>Слайды</span><small>{project.slides.length}</small></div><div className="slide-list">{project.slides.map((s, i) => <div key={s.id} className={`thumbnail-row ${s.id === current.id ? "active" : ""}`} draggable tabIndex={0} role="button" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { setCurrentId(s.id); setSelectedId(null); } }} onDragStart={() => setDragSlideId(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => reorder(s.id)} onClick={() => { setCurrentId(s.id); setSelectedId(null); }}><span className="slide-number">{String(i + 1).padStart(2, "0")}</span><SlideThumbnail slide={s} settings={project.presentationSettings} /><div className="thumb-actions"><Button view="flat" onClick={(e) => { e.stopPropagation(); duplicateSlide(s.id); }} title="Дублировать"><Icon data={Copy} size={14} /></Button><Button view="flat-danger" onClick={(e) => { e.stopPropagation(); deleteSlide(s.id); }} title="Удалить"><Icon data={TrashBin} size={14} /></Button></div></div>)}</div><div className="add-wrap"><Button className="add-slide-button" view="action" width="max" onClick={() => setPresetOpen(!presetOpen)}><Icon data={Plus} size={16} />Добавить слайд</Button>{presetOpen && <div className="popover presets"><strong>Выберите раскладку</strong>{Object.keys(presets).map((p) => <button key={p} onClick={() => addSlide(p as keyof typeof presets)}><span className="preset-icon" />{p}</button>)}</div>}</div></aside>
       <section className="canvas-area"><div className="canvas-toolbar"><span>Слайд {current.order + 1}</span><span>16:9 · {project.presentationSettings.grid.columns} × {project.presentationSettings.grid.rows}</span></div><Button className="viewfinder-preview-toggle" view="flat" size="l" selected={gridVisible} aria-label={gridVisible ? "Скрыть сетку" : "Показать сетку"} title={gridVisible ? "Скрыть сетку" : "Показать сетку"} onClick={() => setGridVisible((visible) => !visible)}><Icon data={gridVisible ? Eye : EyeSlash} size={22} /></Button><div className="canvas-stage"><SlideCanvas slide={current} settings={project.presentationSettings} selectedId={selectedId} editingId={editingId} preview={false} showGrid={gridVisible} externalDragType={dockDragType} onSelect={(id) => { setSelectedId(id); if (!id) setEditingId(null); }} onEdit={setEditingId} onMoveResize={(id, area) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, grid: area } : b) }))} onResolveMove={(id, area, resolved) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, grid: area } : resolved[b.id] ? { ...b, grid: resolved[b.id] } : b) }))} onDuplicateAt={duplicateBlockAt} onContent={(id, content) => updateCurrent((s) => ({ ...s, blocks: s.blocks.map((b) => b.id === id ? { ...b, content } : b) }))} onDropBlock={addBlock} /></div><div className="canvas-actions"><BlockDock onAdd={addBlock} onDragType={setDockDragType} /></div></section>
@@ -397,6 +420,15 @@ function DresserRange({ label, value, min, max, unit, onUpdate }: { label: strin
 
 function DresserTabs({ value, options, onUpdate }: { value: string; options: string[]; onUpdate: (value: string) => void }) {
   return <div className="dresser-tabs">{options.map((option) => <button type="button" key={option} className={value === option ? "active" : ""} onClick={() => onUpdate(option)}>{option}</button>)}</div>;
+}
+
+function TableSizePicker({ rows, onUpdate }: { rows: string[][]; onUpdate: (rows: string[][]) => void }) {
+  const current = { rows: Math.max(rows.length, 1), columns: Math.max(rows[0]?.length ?? 1, 1) }; const [open, setOpen] = useState(false); const [hovered, setHovered] = useState(current);
+  const maxRows = 8; const maxColumns = 8;
+  return <div className="table-size-control">
+    <button className="table-size-trigger" type="button" aria-expanded={open} onClick={() => { setHovered(current); setOpen((value) => !value); }}><span className="table-size-mini" aria-hidden="true">{Array.from({ length: 9 }, (_, index) => <i key={index} />)}</span><strong>{current.columns} × {current.rows}</strong><Icon data={ChevronDown} size={14} /></button>
+    {open && <div className="table-size-popover" onPointerDown={(event) => event.stopPropagation()}><strong>{hovered.columns} × {hovered.rows}</strong><div className="table-size-grid">{Array.from({ length: maxRows * maxColumns }, (_, index) => { const row = Math.floor(index / maxColumns) + 1; const column = index % maxColumns + 1; const active = row <= hovered.rows && column <= hovered.columns; return <button type="button" key={`${row}-${column}`} className={active ? "active" : ""} aria-label={`${column} столбцов, ${row} строк`} onPointerEnter={() => setHovered({ rows: row, columns: column })} onClick={() => { onUpdate(resizeTable(rows, row, column)); setOpen(false); }} />; })}</div></div>}
+  </div>;
 }
 
 function DesignCheckbox({ label, checked, onUpdate }: { label: string; checked: boolean; onUpdate: (checked: boolean) => void }) {
@@ -467,12 +499,12 @@ function PageInspector({ slide, slides, settings, updateSlide, updateSettings }:
 function BlockInspector({ block, patch, upload, duplicate, remove }: { block: Block; patch: (p: Record<string, unknown>) => void; upload: (e: ChangeEvent<HTMLInputElement>) => void; duplicate: () => void; remove: () => void }) {
   const c = block.content;
   return <div className="inspector-body">
-    {block.type === "text" && <><Field label="Вариант"><select value={String(c.variant)} onChange={(e) => patch({ variant: e.target.value })}>{["heading", "subheading", "body", "insight"].map((x) => <option key={x}>{x}</option>)}</select></Field><Field label="Шрифт"><select value={String(c.fontFamily ?? "Inter")} onChange={(e) => patch({ fontFamily: e.target.value })}><option>Inter</option><option>Unbounded</option></select></Field><TextColorPresets label="Цвет текста" value={String(c.textColor ?? "#000000")} onUpdate={(textColor) => patch({ textColor })} /><DesignCheckbox label="Добавить фон" checked={Boolean(c.backgroundEnabled)} onUpdate={(backgroundEnabled) => patch({ backgroundEnabled })} />{Boolean(c.backgroundEnabled) && <TextColorPresets label="Цвет фона" value={String(c.backgroundColor ?? "#FFFFFF")} onUpdate={(backgroundColor) => patch({ backgroundColor })} />}<Field label="Текст"><textarea rows={7} value={String(c.text)} onChange={(e) => patch({ text: e.target.value, html: undefined })} /></Field><p className="helper">Дважды нажмите на текстовый блок для визуального форматирования.</p></>}
+    {block.type === "text" && <><Field label="Вариант"><select value={String(c.variant)} onChange={(e) => patch({ variant: e.target.value, fontSize: undefined })}>{["heading", "subheading", "body", "insight"].map((x) => <option key={x}>{x}</option>)}</select></Field><Field label="Шрифт"><select value={String(c.fontFamily ?? "Inter")} onChange={(e) => patch({ fontFamily: e.target.value })}><option>Inter</option><option>Unbounded</option></select></Field><Field label="Размер шрифта"><NumberInput value={Number(c.fontSize ?? ({ heading: 52, subheading: 32, body: 18, insight: 20 } as Record<string, number>)[String(c.variant ?? "body")])} min={8} max={96} onUpdate={(value) => patch({ fontSize: value ?? 18 })} /></Field><TextColorPresets label="Цвет текста" value={String(c.textColor ?? "#000000")} onUpdate={(textColor) => patch({ textColor })} /><DesignCheckbox label="Добавить фон" checked={Boolean(c.backgroundEnabled)} onUpdate={(backgroundEnabled) => patch({ backgroundEnabled })} />{Boolean(c.backgroundEnabled) && <TextColorPresets label="Цвет фона" value={String(c.backgroundColor ?? "#FFFFFF")} onUpdate={(backgroundColor) => patch({ backgroundColor })} />}<Field label="Текст"><textarea rows={7} value={String(c.text)} onChange={(e) => patch({ text: e.target.value, html: undefined })} /></Field><p className="helper">Дважды нажмите на блок: доступны жирный текст, курсив, подчёркивание, списки и выравнивание.</p></>}
     {block.type === "metric" && <><Field label="Значение"><input value={String(c.value)} onChange={(e) => patch({ value: e.target.value })} /></Field><Field label="Подпись"><input value={String(c.label)} onChange={(e) => patch({ label: e.target.value })} /></Field><Field label="Сравнение"><input value={String(c.comparison)} onChange={(e) => patch({ comparison: e.target.value })} /></Field><Field label="Комментарий"><textarea rows={3} value={String(c.detail)} onChange={(e) => patch({ detail: e.target.value })} /></Field></>}
     {block.type === "image" && <><Field label="Изображение"><label className="upload-button">{c.src ? "Заменить" : "Загрузить"}<input type="file" accept="image/*" onChange={upload} /></label></Field><Field label="Вписывание"><select value={String(c.fit)} onChange={(e) => patch({ fit: e.target.value })}><option value="cover">Cover</option><option value="contain">Contain</option></select></Field><Field label="Выравнивание"><select value={String(c.align)} onChange={(e) => patch({ align: e.target.value })}>{["top", "center", "bottom"].map((x) => <option key={x}>{x}</option>)}</select></Field></>}
     {block.type === "mockup" && <MockupInspector block={block} patch={patch} upload={upload} />}
     {block.type === "chart" && <><Field label="Тип"><select value={String(c.chartType)} onChange={(e) => patch({ chartType: e.target.value })}><option>Bar</option><option>Line</option></select></Field><Field label="Данные"><textarea rows={7} value={(c.points as Array<{ label: string; value: number }>).map((p) => `${p.label} | ${p.value}`).join("\n")} onChange={(e) => patch({ points: e.target.value.split("\n").slice(0, 30).map((line) => { const [label, value] = line.split("|"); return { label: label?.trim() || "—", value: Number(value) || 0 }; }) })} /></Field></>}
-    {block.type === "table" && <><Field label="Строки"><div className="stepper"><button onClick={() => patch({ rows: (c.rows as string[][]).slice(0, -1) })} disabled={(c.rows as string[][]).length <= 1}>−</button><span>{(c.rows as string[][]).length}</span><button onClick={() => { const rows = c.rows as string[][]; patch({ rows: [...rows, Array(rows[0]?.length || 2).fill("")] .slice(0, 30) }); }}>＋</button></div></Field><p className="helper">Дважды нажмите на таблицу и редактируйте ячейки прямо на слайде.</p></>}
+    {block.type === "table" && <><Field label="Размер таблицы"><TableSizePicker rows={(c.rows as string[][]) ?? [[""]]} onUpdate={(rows) => patch({ rows })} /></Field><p className="helper">Дважды нажмите на таблицу, чтобы редактировать ячейки. Наведите на нижний край и нажмите «Строка», чтобы быстро продолжить таблицу.</p></>}
     {block.type === "divider" && <><Field label="Вариант"><select value={String(c.variant)} onChange={(e) => patch({ variant: e.target.value })}><option value="label">Section label</option><option value="line">Divider line</option></select></Field>{c.variant === "label" && <Field label="Подпись"><input value={String(c.label)} onChange={(e) => patch({ label: e.target.value })} /></Field>}</>}
     <div className="inspector-actions"><Button view="outlined" onClick={duplicate}><Icon data={Copy} size={16} />Дублировать</Button><Button view="outlined-danger" onClick={remove}><Icon data={TrashBin} size={16} />Удалить</Button></div></div>;
 }

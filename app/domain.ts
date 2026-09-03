@@ -66,7 +66,7 @@ const id = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.rand
 
 export function createBlock(type: BlockType, grid?: GridArea): Block {
   const content: Record<BlockType, Record<string, unknown>> = {
-    text: { variant: "body", text: "Новый текстовый блок", fontFamily: "Inter", textColor: "#000000", backgroundEnabled: false, backgroundColor: "#FFFFFF" },
+    text: { variant: "body", text: "Новый текстовый блок", fontFamily: "Inter", fontSize: 18, textColor: "#000000", backgroundEnabled: false, backgroundColor: "#FFFFFF" },
     metric: { value: "+0.7%", label: "GMV", comparison: "vs control +0.2%", detail: "Рост после запуска нового ранжирования" },
     image: { src: "", fit: "cover", align: "center", alt: "Изображение" },
     mockup: { deviceModel: "iPhone 17", deviceColor: "Black", src: "", fit: "cover", scale: 90, horizontal: 0, vertical: 0, backgroundMode: "Image", backgroundStyle: "Solid", backgroundPreset: "mesh", background: "#FFFFFF" },

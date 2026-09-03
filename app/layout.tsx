@@ -8,8 +8,8 @@ export const metadata: Metadata = {
   title: "Demo Slides",
   description: "Сборка аккуратных демо-презентаций из адаптивных блоков.",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/logo.png",
+    shortcut: "/logo.png",
   },
 };
 

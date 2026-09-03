@@ -4,18 +4,18 @@ import { getMetricVariant, type Block, type GridArea, type PresentationSettings,
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const GOOGLE_SLIDES_MIME = "application/vnd.google-apps.presentation";
 const toInches = (value: number) => value / 90;
+const toPoints = (value: number) => value * 72 / 90;
 const hex = (value: unknown, fallback = "FFFFFF") => { const match = String(value ?? "").match(/^#?([\dA-F]{6})$/i); return match?.[1].toUpperCase() ?? fallback; };
-const plainText = (value: unknown) => String(value ?? "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "").trim();
+const plainText = (value: unknown) => String(value ?? "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(div|p|li)>/gi, "\n").replace(/<li[^>]*>/gi, "• ").replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/\n{3,}/g, "\n\n").trim();
 const safeName = (value: string) => value.trim().replace(/[\\/:*?"<>|]+/g, "-") || "Presentation";
 
 type TextVariant = "heading" | "subheading" | "body" | "insight";
 
 const textStyles: Record<TextVariant, { fontSize: number; bold: boolean; valign: "top" | "middle" }> = {
-  // CSS pixels on the 1200 × 675 design canvas converted to PowerPoint points.
-  heading: { fontSize: 39, bold: true, valign: "middle" },
-  subheading: { fontSize: 24, bold: true, valign: "top" },
-  body: { fontSize: 13.5, bold: false, valign: "top" },
-  insight: { fontSize: 15, bold: true, valign: "top" },
+  heading: { fontSize: toPoints(52), bold: true, valign: "middle" },
+  subheading: { fontSize: toPoints(32), bold: true, valign: "top" },
+  body: { fontSize: toPoints(18), bold: false, valign: "top" },
+  insight: { fontSize: toPoints(20), bold: true, valign: "top" },
 };
 
 function textVariant(value: unknown): TextVariant {
@@ -33,8 +33,22 @@ function richTextAlign(value: unknown): "left" | "center" | "right" {
 function richTextFontSize(value: unknown, fallback: number) {
   const match = String(value ?? "").match(/font-size\s*:\s*([\d.]+)\s*(px|pt)/i);
   if (!match) return fallback;
-  const size = Number(match[1]) * (match[2].toLowerCase() === "px" ? .75 : 1);
+  const size = Number(match[1]) * (match[2].toLowerCase() === "px" ? 72 / 90 : 1);
   return Number.isFinite(size) ? Math.max(6, Math.min(96, size)) : fallback;
+}
+
+function richTextRuns(value: unknown, inheritedBold: boolean): PptxGenJS.TextProps[] {
+  const html = String(value ?? ""); if (!/<[a-z][\s\S]*>/i.test(html) || typeof DOMParser === "undefined") return [{ text: plainText(html), options: { bold: inheritedBold } }];
+  const root = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html").body.firstElementChild; const runs: PptxGenJS.TextProps[] = [];
+  const push = (text: string, bold: boolean, italic: boolean, underline: boolean) => { if (!text) return; const options = { bold: inheritedBold || bold, italic, underline: underline ? { style: "sng" as const } : undefined }; const previous = runs.at(-1); if (previous && JSON.stringify(previous.options) === JSON.stringify(options)) previous.text = `${previous.text ?? ""}${text}`; else runs.push({ text, options }); };
+  const newline = () => { const last = runs.at(-1); if (last && !String(last.text ?? "").endsWith("\n")) push("\n", false, false, false); };
+  const walk = (node: Node, state = { bold: false, italic: false, underline: false }) => {
+    if (node.nodeType === Node.TEXT_NODE) { push(node.textContent ?? "", state.bold, state.italic, state.underline); return; }
+    if (!(node instanceof HTMLElement)) return; const tag = node.tagName.toLowerCase(); const next = { bold: state.bold || tag === "b" || tag === "strong", italic: state.italic || tag === "i" || tag === "em", underline: state.underline || tag === "u" };
+    if (tag === "br") { newline(); return; } if (tag === "li") push("• ", next.bold, next.italic, next.underline);
+    node.childNodes.forEach((child) => walk(child, next)); if (["div", "p", "li"].includes(tag)) newline();
+  };
+  root?.childNodes.forEach((node) => walk(node)); if (runs.at(-1)?.text === "\n") runs.pop(); return runs.length ? runs : [{ text: plainText(html), options: { bold: inheritedBold } }];
 }
 
 function gridMetrics(settings: PresentationSettings) {
@@ -97,11 +111,11 @@ async function addBlock(pptx: PptxGenJS, target: PptxGenJS.Slide, block: Block, 
   if (!(["text", "divider", "mockup"] as Block["type"][]).includes(block.type)) target.addShape(shape, { ...box, fill, line });
   if (block.type === "text") {
     const variant = textVariant(content.variant); const typography = textStyles[variant]; const html = content.html ?? content.text;
-    const fontSize = richTextFontSize(html, typography.fontSize); const inset = Math.min(toInches(28), box.w * .22, box.h * .3);
-    const margin: number | [number, number, number, number] = variant === "insight" ? [box.h * .16, inset, inset, inset] : inset;
+    const explicitSize = Number(content.fontSize); const fontSize = Number.isFinite(explicitSize) ? Math.max(6, Math.min(96, toPoints(explicitSize))) : richTextFontSize(html, typography.fontSize);
+    const insetX = Math.min(toInches(28), box.w * .22); const insetTop = variant === "insight" ? box.h * .16 : Math.min(toInches(28), box.h * .3); const insetBottom = Math.min(toInches(28), box.h * .3); const textBox = { x: box.x + insetX, y: box.y + insetTop, w: Math.max(.05, box.w - insetX * 2), h: Math.max(.05, box.h - insetTop - insetBottom) };
     if (content.backgroundEnabled) target.addShape(shape, { ...box, fill: { color: hex(content.backgroundColor) }, line: { transparency: 100 } });
     else if (variant === "insight") target.addShape(shape, { ...box, fill: { color: "EEF4FD" }, line: { color: "5B4AB4", width: 2 } });
-    target.addText(plainText(html), { ...box, margin, fontFace: String(content.fontFamily ?? "Inter"), fontSize, bold: typography.bold, color: hex(content.textColor, "000000"), align: richTextAlign(html), valign: typography.valign, breakLine: false, fit: "shrink", ...(variant === "heading" ? { charSpacing: -1.75 } : {}) }); return;
+    target.addText(richTextRuns(html, typography.bold), { ...textBox, margin: 0, fontFace: String(content.fontFamily ?? "Inter"), fontSize, color: hex(content.textColor, "000000"), align: richTextAlign(html), valign: typography.valign, breakLine: false, fit: "shrink", ...(variant === "heading" ? { charSpacing: -1.75 } : {}) }); return;
   }
   if (block.type === "metric") {
     const metricVariant = getMetricVariant(block.grid); const compact = block.grid.w <= 2 || block.grid.h <= 2; const padding = compact ? .08 : .18; const metricFontSize = compact ? Math.max(12, Math.min(22, box.h * 10)) : Math.max(20, Math.min(36, box.h * 13));
@@ -115,9 +129,10 @@ async function addBlock(pptx: PptxGenJS, target: PptxGenJS.Slide, block: Block, 
   }
   if (block.type === "image") { const data = await imageData(content.src); if (data) target.addImage({ data, ...box }); else target.addText("Изображение", { ...box, margin: 0, align: "center", valign: "middle", color: "7B828A", fontSize: 13 }); return; }
   if (block.type === "mockup") {
-    const transparent = String(content.backgroundMode ?? "Image") === "None"; if (!transparent) target.addShape(shape, { ...box, fill: { color: String(content.backgroundStyle) === "Solid" ? hex(content.background, "EEF0F3") : "EAF7FF" }, line: { transparency: 100 } });
-    const model = String(content.deviceModel ?? "iPhone 17"); const color = String(content.deviceColor ?? "Black"); const laptop = model === "MacBook Air"; const deviceH = laptop ? Math.min(box.h * .74, box.w * .62) : box.h * .84; const deviceW = laptop ? deviceH * 1.65 : deviceH * .484; const dx = box.x + (box.w - deviceW) / 2 + toInches(Number(content.horizontal ?? 0)); const dy = box.y + (box.h - deviceH) / 2 + toInches(Number(content.vertical ?? 0)); const scale = Number(content.scale ?? 90) / 90; const imageBox = { x: dx + deviceW * (1 - scale) / 2, y: dy + deviceH * (1 - scale) / 2, w: deviceW * scale, h: deviceH * scale };
-    const screen = await imageData(content.src); if (screen) target.addImage({ data: screen, ...imageBox, transparency: 0 }); const frameData = await imageData(deviceAssets[model]?.[color] ?? deviceAssets[model]?.[Object.keys(deviceAssets[model] ?? {})[0]]); if (frameData) target.addImage({ data: frameData, ...imageBox, transparency: 0 }); return;
+    const transparent = String(content.backgroundMode ?? "Image") === "None"; if (!transparent) { if (String(content.backgroundStyle) === "Solid") target.addShape(shape, { ...box, fill: { color: hex(content.background, "FFFFFF") }, line: { transparency: 100 } }); else { const uploaded = content.backgroundImage ? await imageData(content.backgroundImage) : ""; const background = uploaded || gradientBackgroundData(String(content.backgroundPreset ?? "mesh")); if (background) target.addImage({ data: background, ...box }); } }
+    const model = String(content.deviceModel ?? "iPhone 17"); const color = String(content.deviceColor ?? "Black"); const laptop = model === "MacBook Air"; const scale = Math.max(.35, Math.min(1.8, Number(content.scale ?? 90) / 100)); const baseW = laptop ? box.w * .94 : box.h * .92 * (438 / 905); const baseH = laptop ? baseW * (908 / 1499) : box.h * .92; const imageBox = { x: box.x + (box.w - baseW * scale) / 2 + toInches(Number(content.horizontal ?? 0)), y: box.y + (box.h - baseH * scale) / 2 + toInches(Number(content.vertical ?? 0)), w: baseW * scale, h: baseH * scale };
+    const screenInsets = laptop ? { left: .101, top: .034, width: .798, height: .854 } : model === "Android" ? { left: .041, top: .017, width: .917, height: .965 } : { left: .042, top: .016, width: .916, height: .964 }; const screenBox = { x: imageBox.x + imageBox.w * screenInsets.left, y: imageBox.y + imageBox.h * screenInsets.top, w: imageBox.w * screenInsets.width, h: imageBox.h * screenInsets.height };
+    const screen = await imageData(content.src); if (screen) target.addImage({ data: screen, ...screenBox, transparency: 0 }); const frameData = await imageData(deviceAssets[model]?.[color] ?? deviceAssets[model]?.[Object.keys(deviceAssets[model] ?? {})[0]]); if (frameData) target.addImage({ data: frameData, ...imageBox, transparency: 0 }); return;
   }
   if (block.type === "table") { const rows = (content.rows as string[][]) ?? []; target.addTable(rows.map((row) => row.map((text) => ({ text: String(text) }))), { ...box, border: { color: "DDE1E5", pt: 1 }, fill: { color: "FFFFFF" }, color: "1C2228", fontFace: "Inter", fontSize: 10, margin: .06 }); return; }
   if (block.type === "chart") {
