@@ -99,6 +99,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .interaction-guide.guide-resize { border-style: dashed; background: transparent; transition: none; }
 .interaction-guide.is-copy { border-style: dashed; background: #f3ec9b1c; }
 .interaction-guide > span { position: absolute; top: 8px; left: 8px; padding: 4px 7px; border-radius: 6px; color: #24210e; background: var(--ds-canvas-accent); font-size: 9px; font-weight: 700; box-shadow: 0 3px 10px #0003; }
+.selection-marquee { position: absolute; z-index: 14; border: 1.5px solid #7f6bfc; border-radius: 5px; background: #7f6bfc20; box-shadow: 0 0 0 1px #ffffff55 inset; pointer-events: none; }
 .block-inner { width: 100%; height: 100%; min-width: 0; overflow: hidden; border-radius: var(--block-radius, 8px); background: #f5f7f8; }
 .block-text .block-inner, .block-divider .block-inner { background: transparent; }
 .edge-resize { position: absolute; z-index: 8; padding: 0; border: 0; background: transparent; touch-action: none; }
@@ -122,7 +123,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .rich-text-toolbar { position: absolute; z-index: 15; left: 8px; top: 8px; display: flex; align-items: center; gap: 3px; padding: 4px; border: 1px solid #414141; border-radius: 7px; color: #f4f4f4; background: #242424; box-shadow: 0 8px 22px #00000045; }
 .rich-text-toolbar button { width: 28px; height: 26px; display: grid; place-items: center; border: 0; padding: 0; border-radius: 4px; font-size: 13px; }
 .rich-text-divider { width: 1px; height: 18px; margin: 0 2px; background: #4c4c4c; }
-.is-rich-editing { cursor: text; outline: none; }
+.is-rich-editing { cursor: text; outline: none; user-select: text; -webkit-user-select: text; }
+.is-rich-editing::selection, .is-rich-editing *::selection { color: inherit; background: #7f6bfc5c; }
+.sidebar-rich-text { margin-bottom: 16px; }
+.sidebar-rich-text > span { display: block; margin-bottom: 6px; color: var(--ds-muted); font-size: 11px; }
+.sidebar-rich-text .rich-text-toolbar { position: static; width: 100%; flex-wrap: wrap; box-shadow: none; }
+.group-selection-helper { margin: 0 0 18px; line-height: 1.5; }
 .is-preview .slide-block { cursor: default; }
 .canvas-actions { position: absolute; z-index: 25; left: 50%; bottom: 14px; transform: translateX(-50%); }
 .block-dock { display: flex; align-items: flex-end; gap: 6px; padding: 7px; border: 1px solid #454545; border-radius: 16px; background: #242424e8; box-shadow: 0 12px 34px #0009, inset 0 1px #ffffff0d; backdrop-filter: blur(12px); }
