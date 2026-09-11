@@ -74,6 +74,36 @@ const deviceAssets: Record<string, Record<string, string>> = {
   "MacBook Air": { Silver: "/device-frames/macbook-air-silver.png" },
 };
 
+const deviceCanvasSpecs: Record<string, { width: number; height: number; screen: { left: number; top: number; width: number; height: number; radius: number } }> = {
+  "iPhone 17": { width: 438, height: 905, screen: { left: .042, top: .016, width: .916, height: .964, radius: .13 } },
+  Android: { width: 438, height: 905, screen: { left: .041, top: .017, width: .917, height: .965, radius: .12 } },
+  "MacBook Air": { width: 1499, height: 908, screen: { left: .101, top: .034, width: .798, height: .854, radius: .015 } },
+};
+
+function loadCanvasImage(data: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error("Не удалось подготовить изображение мокапа")); image.src = data;
+  });
+}
+
+function roundedRectPath(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const safeRadius = Math.min(radius, width / 2, height / 2); context.beginPath(); context.moveTo(x + safeRadius, y); context.lineTo(x + width - safeRadius, y); context.quadraticCurveTo(x + width, y, x + width, y + safeRadius); context.lineTo(x + width, y + height - safeRadius); context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height); context.lineTo(x + safeRadius, y + height); context.quadraticCurveTo(x, y + height, x, y + height - safeRadius); context.lineTo(x, y + safeRadius); context.quadraticCurveTo(x, y, x + safeRadius, y); context.closePath();
+}
+
+function drawImageCover(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
+  const sourceRatio = image.naturalWidth / image.naturalHeight; const targetRatio = width / height; let sourceX = 0; let sourceY = 0; let sourceWidth = image.naturalWidth; let sourceHeight = image.naturalHeight;
+  if (sourceRatio > targetRatio) { sourceWidth = image.naturalHeight * targetRatio; sourceX = (image.naturalWidth - sourceWidth) / 2; }
+  else { sourceHeight = image.naturalWidth / targetRatio; sourceY = (image.naturalHeight - sourceHeight) / 2; }
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+}
+
+async function deviceCompositeData(screenData: string, frameData: string, model: string) {
+  const spec = deviceCanvasSpecs[model] ?? deviceCanvasSpecs["iPhone 17"]; const canvas = document.createElement("canvas"); canvas.width = spec.width; canvas.height = spec.height; const context = canvas.getContext("2d"); if (!context) return frameData;
+  const [screen, deviceFrame] = await Promise.all([screenData ? loadCanvasImage(screenData) : null, loadCanvasImage(frameData)]); const screenBox = { x: spec.width * spec.screen.left, y: spec.height * spec.screen.top, width: spec.width * spec.screen.width, height: spec.height * spec.screen.height };
+  if (screen) { context.save(); roundedRectPath(context, screenBox.x, screenBox.y, screenBox.width, screenBox.height, screenBox.width * spec.screen.radius); context.clip(); drawImageCover(context, screen, screenBox.x, screenBox.y, screenBox.width, screenBox.height); context.restore(); }
+  context.globalCompositeOperation = "multiply"; context.drawImage(deviceFrame, 0, 0, spec.width, spec.height); context.globalCompositeOperation = "source-over"; return canvas.toDataURL("image/png");
+}
+
 type GradientStop = [number, string];
 
 function linearGradient(context: CanvasRenderingContext2D, width: number, height: number, angle: number, stops: GradientStop[]) {
@@ -131,8 +161,7 @@ async function addBlock(pptx: PptxGenJS, target: PptxGenJS.Slide, block: Block, 
   if (block.type === "mockup") {
     const transparent = String(content.backgroundMode ?? "Image") === "None"; if (!transparent) { if (String(content.backgroundStyle) === "Solid") target.addShape(shape, { ...box, fill: { color: hex(content.background, "FFFFFF") }, line: { transparency: 100 } }); else { const uploaded = content.backgroundImage ? await imageData(content.backgroundImage) : ""; const background = uploaded || gradientBackgroundData(String(content.backgroundPreset ?? "mesh")); if (background) target.addImage({ data: background, ...box }); } }
     const model = String(content.deviceModel ?? "iPhone 17"); const color = String(content.deviceColor ?? "Black"); const laptop = model === "MacBook Air"; const scale = Math.max(.35, Math.min(1.8, Number(content.scale ?? 90) / 100)); const baseW = laptop ? box.w * .94 : box.h * .92 * (438 / 905); const baseH = laptop ? baseW * (908 / 1499) : box.h * .92; const imageBox = { x: box.x + (box.w - baseW * scale) / 2 + toInches(Number(content.horizontal ?? 0)), y: box.y + (box.h - baseH * scale) / 2 + toInches(Number(content.vertical ?? 0)), w: baseW * scale, h: baseH * scale };
-    const screenInsets = laptop ? { left: .101, top: .034, width: .798, height: .854 } : model === "Android" ? { left: .041, top: .017, width: .917, height: .965 } : { left: .042, top: .016, width: .916, height: .964 }; const screenBox = { x: imageBox.x + imageBox.w * screenInsets.left, y: imageBox.y + imageBox.h * screenInsets.top, w: imageBox.w * screenInsets.width, h: imageBox.h * screenInsets.height };
-    const screen = await imageData(content.src); if (screen) target.addImage({ data: screen, ...screenBox, transparency: 0 }); const frameData = await imageData(deviceAssets[model]?.[color] ?? deviceAssets[model]?.[Object.keys(deviceAssets[model] ?? {})[0]]); if (frameData) target.addImage({ data: frameData, ...imageBox, transparency: 0 }); return;
+    const screen = await imageData(content.src); const frameData = await imageData(deviceAssets[model]?.[color] ?? deviceAssets[model]?.[Object.keys(deviceAssets[model] ?? {})[0]]); if (frameData) { const composite = await deviceCompositeData(screen, frameData, model); target.addImage({ data: composite, ...imageBox, transparency: 0 }); } return;
   }
   if (block.type === "table") { const rows = (content.rows as string[][]) ?? []; target.addTable(rows.map((row) => row.map((text) => ({ text: String(text) }))), { ...box, border: { color: "DDE1E5", pt: 1 }, fill: { color: "FFFFFF" }, color: "1C2228", fontFace: "Inter", fontSize: 10, margin: .06 }); return; }
   if (block.type === "chart") {
